@@ -749,9 +749,9 @@ final class TimelineCanvas: NSView {
         }
 
         // Linked partners on the other kind of track move the same number of tracks, so a clip
-        // taken from V1 to V2 has its sound go from A1 to A2 (and back) — but only into space that's
-        // free: with other sound already there (music on A2), the sound stays on its own track rather
-        // than writing over it.
+        // taken from V1 to V2 has its sound go from A1 to A2 (and back), when they're on matching tracks to
+        // start with — but only into space that's free: with other sound already there (music on A2), the
+        // sound stays on its own track rather than writing over it.
         let movedLinks = Set(originals.filter { $0.kind.trackKind == kind }.compactMap(\.linkID))
         let otherKind: TrackKind = kind == .video ? .audio : .video
         let otherTracks = project.tracks(otherKind)
@@ -772,6 +772,12 @@ final class TimelineCanvas: NSView {
                 && !($0.linkID.map(overwritten.contains) ?? false) }
         }
 
+        // Where each dragged clip's track is (V1 = 0), by link: its partner follows only from the matching track (A1
+        // with V1), keeping them matched. On another track (a picture on V2 with its sound on A1), it stays put.
+        var draggedTrack: [UUID: Int] = [:]
+        for c in originals where c.kind.trackKind == kind {
+            if let link = c.linkID, let i = project.trackIndex(c.trackID, kind: kind) { draggedTrack[link] = i }
+        }
         var out: [UUID: Clip] = [:]
         for var c in originals {
             c.start = max(0, c.start + dt)
@@ -779,7 +785,7 @@ final class TimelineCanvas: NSView {
                 let ni = i + moveTrackDelta
                 c.trackID = ni >= tracks.count ? (kind == .video ? TrackToken.newVideo : TrackToken.newAudio) : tracks[max(0, ni)].id
             } else if c.kind.trackKind == otherKind, let link = c.linkID, movedLinks.contains(link),
-                      let i = project.trackIndex(c.trackID, kind: otherKind) {
+                      let i = project.trackIndex(c.trackID, kind: otherKind), draggedTrack[link] == i {
                 let ni = max(0, i + moveTrackDelta)
                 if ni >= otherTracks.count {
                     c.trackID = otherKind == .video ? TrackToken.newVideo : TrackToken.newAudio
