@@ -1,4 +1,5 @@
 import AVFoundation
+import CoreAudio
 import os
 
 /// Playback sound as continuous streams, one per audio track ("lanes"), all on one clock. Each track's
@@ -17,7 +18,7 @@ final class AudioStream: @unchecked Sendable {
     private var timer: DispatchSourceTimer?
 
     /// How far ahead of what's heard the sound is queued: enough to ride out a busy moment, little
-    /// enough that a change is heard soon after it's made.
+    /// enough that a change is heard soon after it's made. On top of the output's own delay (`latency`).
     private static let ahead = CMTime(seconds: 0.2, preferredTimescale: 48000)
     /// A new reader starts at least this far before where its sound is wanted, and what it reads first is
     /// dropped: a freshly started decoder and resampler take up to about 0.1s to settle, which would click.
@@ -25,7 +26,7 @@ final class AudioStream: @unchecked Sendable {
 
     /// One audio track's sound: its own renderer, and what's queued on it.
     private final class Lane {
-        let renderer = AVSampleBufferAudioRenderer()
+        var renderer = AVSampleBufferAudioRenderer()
         /// Its sound in the composition.
         var track: CMPersistentTrackID
         /// The rate its sound is read at: its own (most of its clips'), so the reader doesn't resample.
@@ -44,6 +45,42 @@ final class AudioStream: @unchecked Sendable {
             self.track = track
             self.rate = rate
         }
+    }
+
+    /// How much earlier than it's heard the output needs its sound: next to nothing for the speakers, around
+    /// 0.15-0.3s for Bluetooth headphones, which take the sound that long to send. Everything is queued this much
+    /// further ahead, or it reaches them late and is dropped: choppy, or silent.
+    private var latency = CMTime.zero
+    private let latencyLock = OSAllocatedUnfairLock(initialState: 0.0)
+    /// The output's delay in seconds, for starting the picture with the sound.
+    var outputLatency: Double { latencyLock.withLock { $0 } }
+
+    /// The current output's delay, as macOS reports it.
+    private static func measureLatency() -> Double {
+        func get<T>(_ object: AudioObjectID, _ selector: AudioObjectPropertySelector, _ scope: AudioObjectPropertyScope, _ fallback: T) -> T {
+            var address = AudioObjectPropertyAddress(mSelector: selector, mScope: scope, mElement: kAudioObjectPropertyElementMain)
+            var value = fallback
+            var size = UInt32(MemoryLayout<T>.size)
+            return AudioObjectGetPropertyData(object, &address, 0, nil, &size, &value) == noErr ? value : fallback
+        }
+        let device: AudioObjectID = get(AudioObjectID(kAudioObjectSystemObject), kAudioHardwarePropertyDefaultOutputDevice,
+                                        kAudioObjectPropertyScopeGlobal, AudioObjectID(0))
+        guard device != 0 else { return 0 }
+        let rate: Float64 = get(device, kAudioDevicePropertyNominalSampleRate, kAudioObjectPropertyScopeGlobal, 0)
+        guard rate > 0 else { return 0 }
+        let frames: UInt32 = get(device, kAudioDevicePropertyLatency, kAudioObjectPropertyScopeOutput, 0)
+            + get(device, kAudioDevicePropertySafetyOffset, kAudioObjectPropertyScopeOutput, 0)
+            + get(device, kAudioDevicePropertyBufferFrameSize, kAudioObjectPropertyScopeGlobal, 0)
+        let stream: AudioStreamID = get(device, kAudioDevicePropertyStreams, kAudioObjectPropertyScopeOutput, AudioStreamID(0))
+        let streamFrames: UInt32 = stream == 0 ? 0 : get(stream, kAudioStreamPropertyLatency, kAudioObjectPropertyScopeGlobal, 0)
+        return min(1, Double(frames + streamFrames) / rate)
+    }
+
+    /// Reads the output's delay again (on `queue`).
+    private func updateLatency() {
+        let seconds = Self.measureLatency()
+        latency = CMTime(seconds: seconds, preferredTimescale: 48000)
+        latencyLock.withLock { $0 = seconds }
     }
 
     private struct Feed {
@@ -86,6 +123,25 @@ final class AudioStream: @unchecked Sendable {
     }
 
     init() {
+        let seconds = Self.measureLatency()
+        latency = CMTime(seconds: seconds, preferredTimescale: 48000)
+        latencyLock.withLock { $0 = seconds }
+        // Another output picked (headphones on, off): its delay is read again.
+        var address = AudioObjectPropertyAddress(mSelector: kAudioHardwarePropertyDefaultOutputDevice,
+                                                 mScope: kAudioObjectPropertyScopeGlobal, mElement: kAudioObjectPropertyElementMain)
+        AudioObjectAddPropertyListenerBlock(AudioObjectID(kAudioObjectSystemObject), &address, queue) { [weak self] _, _ in
+            self?.updateLatency()
+        }
+        // The output changed under a renderer (another device, or the same one set up again): it throws away what
+        // it had queued. Its sound is queued again from just ahead of what's heard, rather than left silent.
+        NotificationCenter.default.addObserver(forName: .AVSampleBufferAudioRendererWasFlushedAutomatically, object: nil, queue: nil) { [weak self] note in
+            guard let renderer = note.object as? AVSampleBufferAudioRenderer else { return }
+            self?.queue.async {
+                guard let self, self.playing, let lane = self.lanes.values.first(where: { $0.renderer === renderer }) else { return }
+                self.updateLatency()
+                self.join(lane)
+            }
+        }
         let t = DispatchSource.makeTimerSource(queue: queue)
         t.schedule(deadline: .now(), repeating: .milliseconds(10), leeway: .milliseconds(2))
         t.setEventHandler { [weak self] in self?.pump() }
@@ -168,6 +224,7 @@ final class AudioStream: @unchecked Sendable {
     /// Starts the sound at timeline time `t`, heard from host time `host` (the picture starts then too).
     func start(at t: Double, host: CMTime) {
         queue.async {
+            self.updateLatency()
             for lane in self.lanes.values {
                 lane.feed?.reader.cancelReading()
                 lane.renderer.flush()
@@ -229,7 +286,7 @@ final class AudioStream: @unchecked Sendable {
         lane.feed = nil
         lane.held = nil
         // A lane that has run out (its sound ended) starts again just ahead of what's being heard.
-        guard let end = lane.queuedEnd, end.render > synchronizer.currentTime() + CMTime(seconds: 0.03, preferredTimescale: 48000) else {
+        guard let end = lane.queuedEnd, end.render > synchronizer.currentTime() + latency + CMTime(seconds: 0.03, preferredTimescale: 48000) else {
             join(lane)
             return
         }
@@ -239,7 +296,7 @@ final class AudioStream: @unchecked Sendable {
 
     /// A lane joins in while playing: its sound starts a moment ahead of what's being heard.
     private func join(_ lane: Lane) {
-        let at = synchronizer.currentTime() + CMTime(seconds: 0.1, preferredTimescale: 48000)
+        let at = synchronizer.currentTime() + latency + CMTime(seconds: 0.1, preferredTimescale: 48000)
         guard let stretch = stretch(at: at) else { return }
         let media = at - stretch.offset
         lane.feed?.reader.cancelReading()
@@ -286,8 +343,19 @@ final class AudioStream: @unchecked Sendable {
     /// Keeps every lane topped up to `ahead` of what's being heard.
     private func pump() {
         guard playing else { return }
-        let limit = synchronizer.currentTime() + Self.ahead
+        let limit = synchronizer.currentTime() + latency + Self.ahead
         for lane in lanes.values {
+            // A renderer that has failed (the output turned it down): a fresh one in its place, picking up just
+            // ahead of what's heard, rather than silence until Editroom is opened again.
+            if lane.renderer.status == .failed {
+                let volume = lane.renderer.volume
+                synchronizer.removeRenderer(lane.renderer, at: .invalid)
+                lane.renderer = AVSampleBufferAudioRenderer()
+                lane.renderer.volume = volume
+                synchronizer.addRenderer(lane.renderer)
+                join(lane)
+                continue
+            }
             while lane.renderer.isReadyForMoreMediaData {
                 if let h = lane.held {
                     guard h.render < limit else { break }

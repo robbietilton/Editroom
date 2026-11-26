@@ -173,7 +173,8 @@ final class PlaybackEngine {
             return
         }
         let t = currentTime
-        let host = CMTimeAdd(CMClockGetTime(CMClockGetHostTimeClock()), CMTime(seconds: 0.06, preferredTimescale: 1_000_000_000))
+        // Far enough ahead for the output's own delay (Bluetooth headphones), so the first sound isn't late.
+        let host = CMTimeAdd(CMClockGetTime(CMClockGetHostTimeClock()), CMTime(seconds: 0.06 + audio.outputLatency, preferredTimescale: 1_000_000_000))
         audio.setLoop(loopSpan)
         audio.start(at: t, host: host)
         player.setRate(1, time: CompositionBuilder.time(t), atHostTime: host)
@@ -205,7 +206,8 @@ final class PlaybackEngine {
     /// that the picture's own clock says it'll be at.
     private func syncSound() {
         guard isPlaying, let timebase = player.currentItem?.timebase else { return }
-        let host = CMTimeAdd(CMClockGetTime(CMClockGetHostTimeClock()), CMTime(seconds: 0.06, preferredTimescale: 1_000_000_000))
+        // Far enough ahead for the output's own delay (Bluetooth headphones), so the first sound isn't late.
+        let host = CMTimeAdd(CMClockGetTime(CMClockGetHostTimeClock()), CMTime(seconds: 0.06 + audio.outputLatency, preferredTimescale: 1_000_000_000))
         let t = CMSyncConvertTime(host, from: CMClockGetHostTimeClock(), to: timebase).seconds
         guard t.isFinite else { return }
         audio.setLoop(loopSpan)
