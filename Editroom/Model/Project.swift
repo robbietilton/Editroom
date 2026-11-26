@@ -550,6 +550,8 @@ extension Project {
     /// Overwrite edit: the given clips win, anything underneath is trimmed, split or removed.
     mutating func resolveOverlaps(keeping ids: Set<UUID>) {
         let eps = 1e-6
+        /// The right-hand pieces of clips split in two, by what they were linked to and where they were cut.
+        var rights: [UUID: (link: UUID, from: Double, to: Double)] = [:]
         for m in clips.filter({ ids.contains($0.id) }) {
             var result: [Clip] = []
             result.reserveCapacity(clips.count + 1)
@@ -564,6 +566,7 @@ extension Project {
                     var right = c
                     right.id = UUID()
                     right.linkID = nil
+                    if let link = c.linkID { rights[right.id] = (link, m.start, m.end) }
                     right.fadeIn = 0
                     right.trimHead(to: m.end)
                     c.fadeOut = 0
@@ -579,6 +582,16 @@ extension Project {
                 }
             }
             clips = result
+        }
+        // A linked clip split by something dropped across it and its partner (a video with its sound): the two
+        // right-hand pieces are linked to each other, as the left-hand ones still are. A piece whose partner
+        // wasn't split (a title dropped over the picture only) stays on its own.
+        let groups = Dictionary(grouping: rights) { "\($0.value.link)|\(($0.value.from * 1000).rounded())|\(($0.value.to * 1000).rounded())" }
+        for pieces in groups.values {
+            let kinds = Set(pieces.compactMap { p in clips.first { $0.id == p.key }?.kind.trackKind })
+            guard pieces.count > 1, kinds.count > 1 else { continue }
+            let link = UUID()
+            for p in pieces { if let i = index(of: p.key) { clips[i].linkID = link } }
         }
     }
 

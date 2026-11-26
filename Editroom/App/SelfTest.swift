@@ -1411,6 +1411,32 @@ enum SelfTest {
             log("GAPS+PASTE \(closed && all && pasteOK ? "OK" : "FAIL") gap=\(closed) all=\(all) paste=\(pasteOK)")
             ok = ok && closed && all && pasteOK
         }
+        // Overwriting into the middle of a clip with its sound: both halves keep their sound linked. Over the
+        // picture only, the right half of the picture stands alone.
+        do {
+            var p = Project()
+            let v = p.videoTracks[0].id, a = p.audioTracks[0].id
+            let link = UUID(), newLink = UUID()
+            let long = Clip(trackID: v, kind: .video, start: 0, duration: 10, linkID: link)
+            let longA = Clip(trackID: a, kind: .audio, start: 0, duration: 10, linkID: link)
+            let mid = Clip(trackID: v, kind: .video, start: 3, duration: 2, linkID: newLink)
+            let midA = Clip(trackID: a, kind: .audio, start: 3, duration: 2, linkID: newLink)
+            p.clips = [long, longA, mid, midA]
+            p.resolveOverlaps(keeping: [mid.id, midA.id])
+            let rights = p.clips.filter { $0.start == 5 }
+            let leftsLinked = p.clip(long.id)?.linkID == link && p.clip(longA.id)?.linkID == link
+            let rightsLinked = rights.count == 2 && Set(rights.map(\.kind)) == [.video, .audio]
+                && rights[0].linkID != nil && rights[0].linkID == rights[1].linkID && rights[0].linkID != link
+            var q = Project()
+            let qv = q.videoTracks[0].id, qa = q.audioTracks[0].id
+            let title = Clip(trackID: qv, kind: .text, start: 3, duration: 2)
+            q.clips = [Clip(trackID: qv, kind: .video, start: 0, duration: 10, linkID: link),
+                       Clip(trackID: qa, kind: .audio, start: 0, duration: 10, linkID: link), title]
+            q.resolveOverlaps(keeping: [title.id])
+            let alone = q.clips.first { $0.start == 5 && $0.kind == .video }?.linkID == nil
+            log("OVERWRITE LINKS \(leftsLinked && rightsLinked && alone ? "OK" : "FAIL") left=\(leftsLinked) right=\(rightsLinked) pictureOnly=\(alone)")
+            ok = ok && leftsLinked && rightsLinked && alone
+        }
         // Freeze frame: the clip splits at the playhead, a 2s hold goes in and the rest moves along;
         // exported frames across the hold are identical.
         if let video = project.assets.first(where: { $0.kind == .video && $0.duration >= 6 }) {
