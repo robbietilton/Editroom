@@ -1626,12 +1626,22 @@ final class EditorModel: ObservableObject {
         alert.messageText = "Match the sequence to “\(asset.name)”?"
         alert.informativeText = "\(asset.width) × \(asset.height) · \(InspectorView.fpsLabel(fps))\nThe sequence is currently \(project.width) × \(project.height) · \(InspectorView.fpsLabel(project.fps))."
         alert.addButton(withTitle: "Match")
-        alert.addButton(withTitle: "Keep Current")
-        guard alert.runModal() == .alertFirstButtonReturn else { return }
-        mutate { p in
-            p.width = asset.width
-            p.height = asset.height
-            p.fps = fps
+        // Esc keeps the sequence as it is.
+        alert.addButton(withTitle: "Keep Current").keyEquivalent = "\u{1b}"
+        let match = { [weak self] (response: NSApplication.ModalResponse) in
+            guard response == .alertFirstButtonReturn else { return }
+            self?.mutate { p in
+                p.width = asset.width
+                p.height = asset.height
+                p.fps = fps
+            }
+        }
+        // Over the editor without holding it up: more files dropped on the window while it's up (or a click on its
+        // way as it opened) are taken in rather than turned away with a beep.
+        if let window = NSApp.windows.first(where: { $0.isVisible && $0.canBecomeMain }) {
+            alert.show(over: window, then: match)
+        } else {
+            match(alert.runModal())
         }
     }
 
