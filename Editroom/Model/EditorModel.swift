@@ -1412,6 +1412,10 @@ final class EditorModel: ObservableObject {
     /// Opens the folder an import landed in, picks what came in and asks the Media panel to scroll to it: a new
     /// linked folder's tile, or the files (those in the same folder as the first, when they're spread out).
     private func showImported(_ assets: [MediaAsset], folders: [MediaFolder], opened: String?) {
+        // Not while the mouse is down (a file that came in first, grabbed and being dragged while the rest
+        // were still coming): opening its folder or scrolling would move it out from under the pointer, and the drag
+        // would be lost.
+        guard NSEvent.pressedMouseButtons == 0 else { return }
         let tree = MediaTree(project)
         if let opened, tree.exists(opened) {
             mediaFolder = opened
