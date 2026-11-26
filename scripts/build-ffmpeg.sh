@@ -23,9 +23,9 @@ mkdir build && cd build
   --enable-protocol=file,pipe \
   --enable-demuxer=mpegts,mpegps,mxf,matroska,ogg,avi,flv,asf,mov,wav,flac,mp3,aac,ac3,eac3,dv,mpegvideo,h264,hevc,m4v \
   --enable-muxer=mov \
-  --enable-parser=h264,hevc,aac,ac3,mpegaudio,mpegvideo,vp8,vp9,av1,opus,vorbis,flac,dnxhd,dvbsub \
+  --enable-parser=h264,hevc,aac,ac3,dca,mlp,mpegaudio,mpegvideo,vp8,vp9,av1,opus,vorbis,flac,dnxhd,dvbsub \
   --enable-bsf=aac_adtstoasc,extract_extradata,vp9_superframe \
-  --enable-decoder=mpeg1video,mpeg2video,dnxhd,vp8,vp9,theora,h264,hevc,dvvideo,vorbis,opus,mp2,mp3,ac3,eac3,flac,aac,pcm_s16le,pcm_s24le,pcm_s32le,pcm_s16be,pcm_s24be,pcm_bluray,pcm_dvd \
+  --enable-decoder=mpeg1video,mpeg2video,dnxhd,vp8,vp9,theora,h264,hevc,dvvideo,vorbis,opus,mp2,mp3,ac3,eac3,dca,truehd,flac,aac,pcm_s16le,pcm_s24le,pcm_s32le,pcm_s16be,pcm_s24be,pcm_bluray,pcm_dvd \
   --enable-encoder=h264_videotoolbox,hevc_videotoolbox,aac,pcm_s16le \
   --enable-filter=scale,format,aresample,aformat,null,anull,setpts,asetpts \
   --enable-swscale --enable-swresample \
