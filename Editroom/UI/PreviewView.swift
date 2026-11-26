@@ -136,8 +136,8 @@ struct PreviewView: View {
                 ZStack(alignment: .topLeading) {
                     PreviewSurfaceView(model: model)
                         .frame(width: w, height: h)
-                        .clipShape(RoundedRectangle(cornerRadius: 3, style: .continuous))
-                        .overlay(RoundedRectangle(cornerRadius: 3, style: .continuous).strokeBorder(Theme.ink.opacity(0.06)))
+                        // Square, as the export is, with its faint edge drawn just outside the picture, not over it.
+                        .overlay(Rectangle().inset(by: -0.5).stroke(Theme.ink.opacity(0.08), lineWidth: 1))
                     // Nothing on the timeline yet: say how to start, and take a click as "import". Not while
                     // a Media item is hovered: its frame is drawn underneath, by the player, once skimming rests.
                     if model.project.clips.isEmpty, source.current == nil {
@@ -302,7 +302,7 @@ private struct SourceFrame: View {
         // The whole viewer, label in its top-left corner, also when the picture is drawn underneath by the
         // player (scrub frames) rather than here.
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
-        .clipShape(RoundedRectangle(cornerRadius: 3, style: .continuous))
+        .clipped()
         .allowsHitTesting(false)
     }
 }
