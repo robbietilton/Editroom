@@ -755,8 +755,21 @@ final class TimelineCanvas: NSView {
         let movedLinks = Set(originals.filter { $0.kind.trackKind == kind }.compactMap(\.linkID))
         let otherKind: TrackKind = kind == .video ? .audio : .video
         let otherTracks = project.tracks(otherKind)
+        // What the dragged clips land on: a picture taken onto V1 over a clip there may take its sound onto A1 over
+        // that same clip's sound (one drag, as Premiere does); sound that isn't theirs (music) still holds it back.
+        var overwritten = Set<UUID>()
+        for c in originals where c.kind.trackKind == kind {
+            guard let i = project.trackIndex(c.trackID, kind: kind) else { continue }
+            let ni = i + moveTrackDelta
+            guard tracks.indices.contains(ni) else { continue }
+            let start = max(0, c.start + dt), end = start + c.duration
+            for o in project.clips where o.trackID == tracks[ni].id && !ids.contains(o.id) && o.start < end - 1e-6 && o.end > start + 1e-6 {
+                if let link = o.linkID { overwritten.insert(link) }
+            }
+        }
         func taken(_ track: UUID, from start: Double, to end: Double) -> Bool {
-            project.clips.contains { $0.trackID == track && !ids.contains($0.id) && $0.start < end - 1e-6 && $0.end > start + 1e-6 }
+            project.clips.contains { $0.trackID == track && !ids.contains($0.id) && $0.start < end - 1e-6 && $0.end > start + 1e-6
+                && !($0.linkID.map(overwritten.contains) ?? false) }
         }
 
         var out: [UUID: Clip] = [:]
