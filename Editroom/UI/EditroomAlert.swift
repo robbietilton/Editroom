@@ -25,10 +25,10 @@ final class EditroomAlert: NSAlert {
         }
         prepare(action: #selector(stopModal(_:)))
         center(over: parent)
-        RunLoop.main.perform(inModes: [.modalPanel]) { [weak self] in
-            self?.styleButtons()
-            self?.center(over: parent)
-        }
+        // On screen already where it goes, so running it modally has nothing to move (left off screen, it's first
+        // put where macOS puts alerts, and shows there for a frame).
+        window.makeKeyAndOrderFront(nil)
+        RunLoop.main.perform(inModes: [.modalPanel]) { [weak self] in self?.styleButtons() }
         let response = NSApp.runModal(for: window)
         window.orderOut(nil)
         return response
@@ -55,10 +55,11 @@ final class EditroomAlert: NSAlert {
         styleButtons()
     }
 
-    /// Centred on `parent`, across and up and down.
+    /// Centred on `parent` across, and a little above its middle (10% of its height), where a box looks centred.
     private func center(over parent: NSWindow) {
         let f = parent.frame, size = window.frame.size
-        window.setFrameOrigin(NSPoint(x: (f.midX - size.width / 2).rounded(), y: (f.midY - size.height / 2).rounded()))
+        window.setFrameOrigin(NSPoint(x: (f.midX - size.width / 2).rounded(),
+                                      y: (f.midY + f.height * 0.1 - size.height / 2).rounded()))
     }
 
     override func beginSheetModal(for sheetWindow: NSWindow, completionHandler handler: ((NSApplication.ModalResponse) -> Void)? = nil) {
