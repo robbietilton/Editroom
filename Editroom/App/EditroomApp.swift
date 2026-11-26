@@ -177,9 +177,9 @@ enum AboutPanel {
             if let link { attributes[.link] = URL(string: link) }
             credits.append(NSAttributedString(string: text, attributes: attributes))
         }
-        add("Uses ")
+        add(L10n.tr("Uses "))
         add("FFmpeg", link: "https://ffmpeg.org")
-        add(", licensed under the ")
+        add(L10n.tr(", licensed under the "))
         add("LGPL 2.1", link: "https://www.gnu.org/licenses/old-licenses/lgpl-2.1.html")
         NSApp.orderFrontStandardAboutPanel(options: [.credits: credits])
         NSApp.activate()

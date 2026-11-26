@@ -38,8 +38,8 @@ enum LocalImprover {
         func levelPart(_ edits: [MagicEdit]) -> String {
             let n = edits.filter { if case .gain = $0 { return true } else { return false } }.count
             let silent = recipe.levelSilent.isEmpty ? ""
-                : " (\(recipe.levelSilent.joined(separator: ", ")) \(recipe.levelSilent.count == 1 ? "has" : "have") no sound, so \(recipe.levelSilent.count == 1 ? "it was" : "they were") left as \(recipe.levelSilent.count == 1 ? "it is" : "they are"))"
-            return "set \(n) audio clip\(n == 1 ? "" : "s") to the same level" + silent
+                : L10n.fmt(" (%@ had no sound and were left unchanged)", recipe.levelSilent.joined(separator: ", "))
+            return L10n.fmt("set %lld audio clips to the same level", n) + silent
         }
         // Only the audio levels (and maybe a look): just that.
         if recipe.onlyLevels {
@@ -49,15 +49,15 @@ enum LocalImprover {
             }
             if recipe.levelGains.isEmpty {
                 return Outcome(plan: MagicPlan(base: p, tasks: []), summary: "", focused: true,
-                               message: "There's no audio on the timeline to level.")
+                               message: L10n.tr("There's no audio on the timeline to level."))
             }
             guard !edits.isEmpty else {
                 return Outcome(plan: MagicPlan(base: p, tasks: []), summary: "", focused: true,
-                               message: "Your audio clips are already at the same level.")
+                               message: L10n.tr("Your audio clips are already at the same level."))
             }
             var parts = levelEdits(p).isEmpty ? [] : [levelPart(edits)]
-            if let look = recipe.look, look != "none" { parts.append("one look (\(look))") }
-            return Outcome(plan: MCPDraft.plan(base: p, edits: edits), summary: parts.joined(separator: ", "), focused: true)
+            if let look = recipe.look, look != "none" { parts.append(L10n.fmt("one look (%@)", BuiltInLook.displayName(look))) }
+            return Outcome(plan: MCPDraft.plan(base: p, edits: edits), summary: parts.joined(separator: L10n.tr(", ")), focused: true)
         }
         // The main picture track: the lowest video track with shots on it.
         guard let track = p.videoTracks.first(where: { t in p.clips.contains { $0.trackID == t.id && isShot($0) } }),
@@ -105,7 +105,7 @@ enum LocalImprover {
             var edits: [MagicEdit] = []
             let ids = p.unlocked(p.linked(Set(shots.map(\.id))))
             if shots.contains(where: { $0.kind == .video && abs($0.speed - speed) > 1e-3 }) {
-                edits.append(.change(shots.first!.id, String(format: "Speed ×%g", speed)) { q in q.setSpeed(ids: ids, speed: speed) })
+                edits.append(.change(shots.first!.id, L10n.fmt("Speed ×%g", speed)) { q in q.setSpeed(ids: ids, speed: speed) })
             }
             if let look = recipe.look, look != "none" {
                 for c in shots where c.grade?.look != look { edits.append(.look(c.id, name: look)) }
@@ -117,10 +117,10 @@ enum LocalImprover {
             guard !edits.isEmpty else { return nil }
             let before = (shots.map(\.end).max() ?? 0) - shots.first!.start
             let after = (q.clips.filter { $0.trackID == track.id }.map(\.end).max() ?? 0) - shots.first!.start
-            var parts = [String(format: "set every clip to %g%% speed (%.1fs to %.1fs)", speed * 100, before, after)]
-            if recipe.look != nil { parts.append("one look (\(recipe.look!))") }
+            var parts = [L10n.fmt("set every clip to %g%% speed (%.1fs to %.1fs)", speed * 100, before, after)]
+            if let look = recipe.look { parts.append(L10n.fmt("one look (%@)", BuiltInLook.displayName(look))) }
             if !levels.isEmpty { parts.append(levelPart(levels)) }
-            return Outcome(plan: MCPDraft.plan(base: p, edits: edits), summary: parts.joined(separator: ", "), focused: true)
+            return Outcome(plan: MCPDraft.plan(base: p, edits: edits), summary: parts.joined(separator: L10n.tr(", ")), focused: true)
         }
 
         // 0. Media they named: only those, or not those. A request like that is done on its own: nothing
@@ -224,7 +224,8 @@ enum LocalImprover {
                 }
                 planned = lengths
                 if need > 0.5 {
-                    notes.append("it can't be \(Int(target)) seconds long: all the footage in your shots only adds up to about \(Int((target - need).rounded()))")
+                    notes.append(L10n.fmt("the requested length is %lld seconds, but the footage adds up to about %lld seconds",
+                                          Int(target), Int((target - need).rounded())))
                 }
             }
         }
@@ -247,7 +248,7 @@ enum LocalImprover {
             placing = c
             song = c
         } else if recipe.music == .add, songOnTimeline == nil {
-            notes.append("there's no music in your Media to add")
+            notes.append(L10n.tr("there's no music in your Media to add"))
         }
         var cuts: [Double] = [firstStart]   // where each kept shot starts, then where the last one ends
         var lengths: [Double] = []
@@ -463,7 +464,7 @@ enum LocalImprover {
         if recipe.soundEffects {
             let effects = LocalBrain.soundEffects(in: p)
             if effects.isEmpty {
-                notes.append("there are no sound effects in your Media (sound files under 10 seconds)")
+                notes.append(L10n.tr("there are no sound effects in your Media (sound files under 10 seconds)"))
             } else {
                 func named(_ a: MediaAsset, _ words: [String]) -> Bool { words.contains { a.name.lowercased().contains($0) } }
                 let swooshes = effects.filter { named($0, ["whoosh", "swoosh", "swish", "woosh", "transition", "riser", "sweep"]) }
@@ -485,12 +486,7 @@ enum LocalImprover {
                     spots.sort { $0.time < $1.time }
                     if spots.isEmpty {
                         judgedNone = true
-                        notes.append("""
-                            Local could add your sound effects, but it doesn't see a strong moment for them: the cuts don't \
-                            change the picture much, and nothing in the shots moves suddenly. Say where you'd like them \
-                            (for example "a whoosh on every cut" or "an impact at the start"), or ask Claude or ChatGPT, \
-                            which can watch the footage
-                            """)
+                        notes.append(L10n.tr("Local found no strong changes in the picture for sound effects. Specify where to place them, or ask Claude or ChatGPT to watch the footage"))
                     }
                 } else {
                     if let hit = hits.first { spots.append((firstStart, hit, false)) }
@@ -549,31 +545,34 @@ enum LocalImprover {
         edits += levels
 
         if effectsPlaced == 0, recipe.soundEffects, !judgedNone, notes.isEmpty, recipe.isFocused {
-            notes.append("every cut already has a sound effect, so there was nowhere new to put one")
+            notes.append(L10n.tr("every cut already has a sound effect"))
         }
         if edits.isEmpty, judgedNone || !notes.isEmpty {
-            let text = notes.map { $0.prefix(1).uppercased() + $0.dropFirst() }.joined(separator: ". ")
+            let text = notes.map { $0.prefix(1).uppercased() + $0.dropFirst() }.joined(separator: L10n.tr(". "))
             return Outcome(plan: MagicPlan(base: p, tasks: []), summary: "", notes: notes, focused: true,
-                           message: text.isEmpty ? "Your edit already looks good; nothing to change." : text + ".")
+                           message: text.isEmpty ? L10n.tr("Your edit already looks good.") : text + L10n.tr("."))
         }
         guard !edits.isEmpty else { return nil }
         // The length only when it was part of the job: a focused request ("only IMG_1607") just says what it did.
         var parts: [String] = focused && recipe.seconds == nil ? []
-            : [String(format: "%.1fs to %.1fs", oldEnd - firstStart, newEnd - firstStart)]
-        if effectsPlaced > 0 { parts.append("added \(effectsPlaced) sound effect\(effectsPlaced == 1 ? "" : "s") on the cuts") }
-        if !recipe.keepOnly.isEmpty { parts.append("kept only \(recipe.mediaNames.joined(separator: ", ")) (\(named) shot\(named == 1 ? "" : "s") out)") }
-        if !recipe.takeOut.isEmpty { parts.append("took out \(recipe.mediaNames.joined(separator: ", ")) (\(named) shot\(named == 1 ? "" : "s"))") }
-        if recipe.clearRest { parts.append("cleared everything else off the timeline") }
-        if repeats > 0 { parts.append("\(repeats) repeat\(repeats == 1 ? "" : "s") out") }
-        if !doubled.isEmpty, !recipe.clearRest { parts.append("\(doubled.count) doubled title\(doubled.count == 1 ? "" : "s") out") }
-        if weakOut > 0 { parts.append("\(weakOut) weak shot\(weakOut == 1 ? "" : "s") out") }
-        if trimmed > 0 { parts.append("\(trimmed) shot\(trimmed == 1 ? "" : "s") \(growing ? "lengthened" : "trimmed")") }
-        if placing != nil { parts.append("music added") } else if recipe.music == .off && songOnTimeline != nil { parts.append("music out") }
-        if snap, !musicGoes, song != nil, music != nil { parts.append("cut to the beat") }
-        if graded > 0 { parts.append(common == "none" ? "looks off" : "one look (\(common ?? ""))") }
-        if recipe.frame != .unchanged, size != nil { parts.append(recipe.frame.rawValue) }
+            : [L10n.fmt("%.1fs to %.1fs", oldEnd - firstStart, newEnd - firstStart)]
+        if effectsPlaced > 0 { parts.append(L10n.fmt("added %lld sound effects on the cuts", effectsPlaced)) }
+        if !recipe.keepOnly.isEmpty { parts.append(L10n.fmt("kept only %@ (removed %lld shots)", recipe.mediaNames.joined(separator: ", "), named)) }
+        if !recipe.takeOut.isEmpty { parts.append(L10n.fmt("removed %@ (%lld shots)", recipe.mediaNames.joined(separator: ", "), named)) }
+        if recipe.clearRest { parts.append(L10n.tr("cleared everything else off the timeline")) }
+        if repeats > 0 { parts.append(L10n.fmt("removed %lld repeated shots", repeats)) }
+        if !doubled.isEmpty, !recipe.clearRest { parts.append(L10n.fmt("removed %lld duplicate titles", doubled.count)) }
+        if weakOut > 0 { parts.append(L10n.fmt("removed %lld weak shots", weakOut)) }
+        if trimmed > 0 {
+            parts.append(growing ? L10n.fmt("lengthened %lld shots", trimmed) : L10n.fmt("trimmed %lld shots", trimmed))
+        }
+        if placing != nil { parts.append(L10n.tr("music added")) }
+        else if recipe.music == .off && songOnTimeline != nil { parts.append(L10n.tr("music out")) }
+        if snap, !musicGoes, song != nil, music != nil { parts.append(L10n.tr("cut to the beat")) }
+        if graded > 0 { parts.append(common == "none" ? L10n.tr("looks off") : L10n.fmt("one look (%@)", BuiltInLook.displayName(common ?? ""))) }
+        if recipe.frame != .unchanged, size != nil { parts.append(L10n.tr(recipe.frame.rawValue)) }
         if !levels.isEmpty { parts.append(levelPart(levels)) }
-        return Outcome(plan: MCPDraft.plan(base: p, edits: edits), summary: parts.joined(separator: ", "), notes: notes, focused: focused)
+        return Outcome(plan: MCPDraft.plan(base: p, edits: edits), summary: parts.joined(separator: L10n.tr(", ")), notes: notes, focused: focused)
     }
 
     enum MomentKind { case cut, motion }

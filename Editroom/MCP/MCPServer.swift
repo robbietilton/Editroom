@@ -61,7 +61,7 @@ final class MCPServer: ObservableObject {
                         let s = MCPServer.shared
                         s.running = true
                         s.listeningPort = s.listener?.port?.rawValue
-                        s.problem = number == 0 ? "Another copy of Editroom is answering AI apps; this one only runs its own Magic." : nil
+                        s.problem = number == 0 ? L10n.tr("Another copy of Editroom is answering AI apps; this one only runs its own Magic.") : nil
                     case .failed(let e):
                         let s = MCPServer.shared
                         s.running = false
@@ -72,7 +72,7 @@ final class MCPServer: ObservableObject {
                             // Someone else (another copy of Editroom) has the usual port.
                             s.listen(on: 0)
                         } else {
-                            s.problem = "Couldn't listen on port \(Self.port): \(e.localizedDescription)"
+                            s.problem = L10n.fmt("Couldn't listen on port %d: %@", Int32(Self.port), e.localizedDescription)
                         }
                     case .cancelled:
                         MCPServer.shared.running = false
@@ -336,42 +336,44 @@ enum MCPHandler {
             guard let t = (args[key] as? String)?.trimmingCharacters(in: .whitespacesAndNewlines), !t.isEmpty else { return nil }
             return "“" + (t.count > 22 ? String(t.prefix(21)) + "…" : t) + "”"
         }
-        func on(_ verb: String, _ what: String?) -> String { what.map { "\(verb) \($0)" } ?? verb }
+        func on(_ format: String, _ fallback: String, _ what: String?) -> String {
+            what.map { L10n.fmt(format, $0) } ?? L10n.tr(fallback)
+        }
         switch name {
-        case "list_media": return "going through the media"
-        case "get_project": return "reading the timeline"
-        case "list_looks": return "browsing looks"
-        case "look_at_media": return on("looking at", asset())
-        case "note_media": return on("taking notes on", asset())
-        case "analyze_media": return on("studying", asset())
-        case "get_transcript": return on("reading what’s said in", asset())
-        case "get_frame": return asset().map { "checking a frame of \($0)" } ?? "checking a frame"
+        case "list_media": return L10n.tr("going through the media")
+        case "get_project": return L10n.tr("reading the timeline")
+        case "list_looks": return L10n.tr("browsing looks")
+        case "look_at_media": return on("looking at %@", "looking at", asset())
+        case "note_media": return on("taking notes on %@", "taking notes on", asset())
+        case "analyze_media": return on("studying %@", "studying", asset())
+        case "get_transcript": return on("reading what’s said in %@", "reading what’s said in", asset())
+        case "get_frame": return on("checking a frame of %@", "checking a frame", asset())
         case "search_media":
-            if let q = quoted("said") { return "searching for \(q)" }
-            return on("searching for", quoted("shows") ?? "a shot")
-        case "add_clip": return on("placing", asset())
-        case "add_title": return on("adding the title", quoted("text"))
-        case "add_solid": return "adding a solid"
-        case "move_clip": return on("moving", clip())
-        case "trim_clip": return on("trimming", clip())
-        case "split_clip": return on("splitting", clip())
-        case "delete_clips": return "removing clips"
-        case "duplicate_clip": return on("duplicating", clip())
-        case "set_speed", "set_speed_ramp": return on("changing the speed of", clip())
-        case "reverse_clip": return on("reversing", clip())
-        case "freeze_frame": return on("freezing a frame of", clip())
-        case "set_grade": return on("grading", clip())
-        case "set_audio": return on("mixing", clip())
-        case "detach_audio": return on("detaching the sound of", clip())
-        case "set_transition": return "adding a transition"
-        case "set_transform": return on("framing", clip())
-        case "set_title_style": return "styling the title"
-        case "set_sequence": return "setting up the sequence"
-        case "add_track", "set_track": return "arranging tracks"
-        case "set_marker", "delete_markers": return "marking moments"
-        case "set_in_out": return "setting the in and out"
-        case "download_media": return on("downloading", quoted("name"))
-        case "history": return "undoing a step"
+            if let q = quoted("said") { return L10n.fmt("searching for %@", q) }
+            return on("searching for %@", "searching for a shot", quoted("shows"))
+        case "add_clip": return on("placing %@", "placing", asset())
+        case "add_title": return on("adding the title %@", "adding the title", quoted("text"))
+        case "add_solid": return L10n.tr("adding a solid")
+        case "move_clip": return on("moving %@", "moving", clip())
+        case "trim_clip": return on("trimming %@", "trimming", clip())
+        case "split_clip": return on("splitting %@", "splitting", clip())
+        case "delete_clips": return L10n.tr("removing clips")
+        case "duplicate_clip": return on("duplicating %@", "duplicating", clip())
+        case "set_speed", "set_speed_ramp": return on("changing the speed of %@", "changing the speed of", clip())
+        case "reverse_clip": return on("reversing %@", "reversing", clip())
+        case "freeze_frame": return on("freezing a frame of %@", "freezing a frame of", clip())
+        case "set_grade": return on("grading %@", "grading", clip())
+        case "set_audio": return on("mixing %@", "mixing", clip())
+        case "detach_audio": return on("detaching the sound of %@", "detaching the sound of", clip())
+        case "set_transition": return L10n.tr("adding a transition")
+        case "set_transform": return on("framing %@", "framing", clip())
+        case "set_title_style": return L10n.tr("styling the title")
+        case "set_sequence": return L10n.tr("setting up the sequence")
+        case "add_track", "set_track": return L10n.tr("arranging tracks")
+        case "set_marker", "delete_markers": return L10n.tr("marking moments")
+        case "set_in_out": return L10n.tr("setting the in and out")
+        case "download_media": return on("downloading %@", "downloading", quoted("name"))
+        case "history": return L10n.tr("undoing a step")
         default: return nil
         }
     }

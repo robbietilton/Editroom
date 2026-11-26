@@ -243,7 +243,7 @@ enum ReverseAudio {
         if let fmt = track.formatDescriptions.first,
            let asbd = CMAudioFormatDescriptionGetStreamBasicDescription(fmt as! CMAudioFormatDescription)?.pointee,
            asbd.mSampleRate >= 8000 { rate = Int(asbd.mSampleRate) }
-        guard let reader = try? AVAssetReader(asset: asset) else { throw Failure(message: "Couldn't read the sound.") }
+        guard let reader = try? AVAssetReader(asset: asset) else { throw Failure(message: L10n.tr("Couldn't read the sound.")) }
         let output = AVAssetReaderTrackOutput(track: track, outputSettings: [
             AVFormatIDKey: kAudioFormatLinearPCM,
             AVSampleRateKey: rate,
@@ -255,7 +255,7 @@ enum ReverseAudio {
         ])
         output.alwaysCopiesSampleData = false
         reader.add(output)
-        guard reader.startReading() else { throw Failure(message: "Couldn't read the sound.") }
+        guard reader.startReading() else { throw Failure(message: L10n.tr("Couldn't read the sound.")) }
 
         let scratch = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString + ".raw")
         FileManager.default.createFile(atPath: scratch.path, contents: nil)
@@ -274,7 +274,7 @@ enum ReverseAudio {
         }
         sink.write(chunk)
         try sink.close()
-        guard reader.status == .completed else { throw Failure(message: "Couldn't read the sound.") }
+        guard reader.status == .completed else { throw Failure(message: L10n.tr("Couldn't read the sound.")) }
 
         let decoded = try Data(contentsOf: scratch, options: .alwaysMapped)
         let frames = decoded.count / 4

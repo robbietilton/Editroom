@@ -314,7 +314,7 @@ final class AgentConnect: ObservableObject {
         zip.arguments = ["-qrX", out.path, "."]
         try zip.run()
         zip.waitUntilExit()
-        guard zip.terminationStatus == 0 else { throw ConnectError(message: "Couldn't make the Claude extension.") }
+        guard zip.terminationStatus == 0 else { throw ConnectError(message: L10n.tr("Couldn't make the Claude extension.")) }
         return out
     }
 
@@ -322,7 +322,7 @@ final class AgentConnect: ObservableObject {
         let file = try makeClaudeExtension()
         guard openInClaude else { return }
         guard let claude = Self.appURL(Self.claudeBundleID) else {
-            throw ConnectError(message: "The Claude app isn't on this Mac.")
+            throw ConnectError(message: L10n.tr("The Claude app isn't on this Mac."))
         }
         let config = NSWorkspace.OpenConfiguration()
         config.activates = true
@@ -450,7 +450,7 @@ final class AgentConnect: ObservableObject {
     }
 
     private func runClaudeCLI(_ args: [String]) async throws {
-        guard let cli = claudeCLI else { throw ConnectError(message: "Claude Code isn't installed.") }
+        guard let cli = claudeCLI else { throw ConnectError(message: L10n.tr("Claude Code isn't installed.")) }
         let result: (Int32, String) = await Task.detached {
             let p = Process()
             p.executableURL = cli
@@ -464,7 +464,7 @@ final class AgentConnect: ObservableObject {
             return (p.terminationStatus, String(data: data, encoding: .utf8) ?? "")
         }.value
         guard result.0 == 0 else {
-            let line = result.1.split(separator: "\n").first.map(String.init) ?? "Claude Code couldn't make the change."
+            let line = result.1.split(separator: "\n").first.map(String.init) ?? L10n.tr("Claude Code couldn't make the change.")
             throw ConnectError(message: line)
         }
     }

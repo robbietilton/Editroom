@@ -273,12 +273,10 @@ struct MagicButton: View {
         if ai.running {
             if let stage = state.stage {
                 // What it's doing right now, while the thinking show runs; the swarm says "Editing".
-                if stage != "Editing", let doing = state.activity { return Self.sentence(doing) }
+                if stage != L10n.tr("Editing"), let doing = state.activity { return Self.sentence(doing) }
                 return stage
             }
-            guard let s = ai.status else { return nil }
-            if let name = ai.agent?.name, s.hasPrefix("\(name) is ") { return Self.sentence(String(s.dropFirst(name.count + 4))) }
-            return s
+            return ai.status
         }
         return ai.ready ?? state.status ?? state.stage
     }
@@ -287,7 +285,7 @@ struct MagicButton: View {
     /// Who's working, in the button: Claude or ChatGPT, or Local for Editroom's own cut.
     private var worker: String? {
         if ai.running { return ai.agent?.name }
-        return state.busy || state.stage != nil ? "Local" : nil
+        return state.busy || state.stage != nil ? L10n.tr("Local") : nil
     }
     /// While Magic works, hovering offers Stop in the same space.
     private var offerStop: Bool { working && hovering }
@@ -343,14 +341,14 @@ struct MagicButton: View {
             ZStack {
                 // Sized for who's working (or Magic), with room for Stop: it changes size only when a run
                 // starts or ends, never during one.
-                face(worker ?? "Magic", spinning: worker != nil).hidden()
-                face("Stop", icon: "stop.fill").hidden()
+                face(worker ?? L10n.tr("Magic"), spinning: worker != nil).hidden()
+                face(L10n.tr("Stop"), icon: "stop.fill").hidden()
                 Group {
                     if let worker {
                         face(worker, spinning: true)
                     } else {
                         // Finished while away: sparkles until they're back.
-                        face("Magic", icon: ai.ready != nil ? "sparkles" : "wand.and.sparkles")
+                        face(L10n.tr("Magic"), icon: ai.ready != nil ? "sparkles" : "wand.and.sparkles")
                     }
                 }
                 .opacity(offerStop ? 0 : 1)
@@ -382,8 +380,8 @@ struct MagicButton: View {
         .onReceive(NotificationCenter.default.publisher(for: NSApplication.didBecomeActiveNotification)) { _ in
             connections.refresh()
         }
-        .help(working ? "Stop Magic (esc)" : !hasMedia ? "Import some clips first"
-              : "Magic: have Claude or ChatGPT edit, or make a quick cut")
+        .help(working ? L10n.tr("Stop Magic (esc)") : !hasMedia ? L10n.tr("Import some clips first")
+              : L10n.tr("Magic: have Claude or ChatGPT edit, or make a quick cut"))
         // One popover: what to make, or what the AI said when it finished.
         .popover(isPresented: Binding(get: { ai.asking || ai.note != nil },
                                       set: { if !$0 { ai.asking = false; ai.note = nil } }), arrowEdge: .bottom) {

@@ -16,6 +16,7 @@ struct SettingsView: View {
             case .updates: "arrow.down.circle"
             }
         }
+        var title: String { L10n.tr(rawValue) }
         /// The tab's name kept in UserDefaults ("general", "shortcuts", "magic", "updates").
         var key: String { rawValue.lowercased() }
     }
@@ -39,7 +40,7 @@ struct SettingsView: View {
             Divider().overlay(Theme.stroke)
 
             VStack(alignment: .leading, spacing: 0) {
-                Text(tab.rawValue)
+                Text(tab.title)
                     .font(.system(size: 20, weight: .semibold))
                     .foregroundStyle(Theme.text)
                     .padding(.horizontal, 24)
@@ -66,7 +67,7 @@ struct SettingsView: View {
         return Button { tabKey = item.key } label: {
             VStack(spacing: 3) {
                 Image(systemName: item.symbol).font(.system(size: 20)).frame(width: 28, height: 26)
-                Text(item.rawValue).font(.system(size: 13))
+                Text(item.title).font(.system(size: 13))
             }
             .foregroundStyle(selected ? Theme.text : Theme.textDim)
             .padding(.horizontal, 10)
@@ -84,7 +85,7 @@ struct SettingsView: View {
 private struct SectionLabel: View {
     let text: String
     var body: some View {
-        Text(text.uppercased()).font(Theme.label()).kerning(1.4).foregroundStyle(Theme.textFaint)
+        Text(L10n.tr(text).uppercased()).font(Theme.label()).kerning(1.4).foregroundStyle(Theme.textFaint)
     }
 }
 
@@ -148,7 +149,7 @@ private struct SettingsSection<Content: View>: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 7) {
-            Text(title.uppercased())
+            Text(L10n.tr(title).uppercased())
                 .font(Theme.label())
                 .kerning(1.5)
                 .foregroundStyle(Theme.textFaint)
@@ -175,8 +176,8 @@ private struct SettingsRow<Control: View>: View {
     var body: some View {
         HStack(spacing: 14) {
             VStack(alignment: .leading, spacing: 2) {
-                Text(title).font(.system(size: 13)).foregroundStyle(Theme.text)
-                if let detail { Text(detail).font(.system(size: 11)).foregroundStyle(Theme.textDim) }
+                Text(L10n.tr(title)).font(.system(size: 13)).foregroundStyle(Theme.text)
+                if let detail { Text(L10n.tr(detail)).font(.system(size: 11)).foregroundStyle(Theme.textDim) }
             }
             Spacer(minLength: 0)
             control
@@ -196,7 +197,7 @@ private struct SegmentedChoice<Value: Hashable>: View {
         HStack(spacing: 0) {
             ForEach(options, id: \.0) { value, name in
                 Button { selection = value } label: {
-                    Text(name)
+                    Text(L10n.tr(name))
                         .font(mono ? Theme.mono(11.5) : .system(size: 12))
                         .foregroundStyle(selection == value ? Theme.text : Theme.textDim)
                         .padding(.horizontal, 11)
@@ -341,7 +342,7 @@ private final class ShortcutRecorder: ObservableObject {
                 // Escape cancels.
                 if let combo = KeyCombo(event: e) {
                     if let taken = ShortcutStore.shared.set(action, to: combo) {
-                        self.show("\(combo.display) was \(taken.title)'s shortcut, so \(taken.title) no longer has it.")
+                        self.show(L10n.fmt("Reassigned %@. It was removed from %@.", combo.display, taken.title))
                     }
                 }
                 self.stop()
@@ -405,7 +406,7 @@ private struct ShortcutSettings: View {
                         let skim = group == .playback && showsSkim
                         if !actions.isEmpty || skim {
                             VStack(alignment: .leading, spacing: 4) {
-                                SectionLabel(text: group.rawValue).padding(.leading, 10)
+                                SectionLabel(text: group.title).padding(.leading, 10)
                                 VStack(spacing: 0) {
                                     if skim && !actions.contains(.playPause) { SkimPlayRow() }
                                     ForEach(actions) { a in
@@ -424,7 +425,7 @@ private struct ShortcutSettings: View {
 
             Divider().overlay(Theme.stroke)
             HStack {
-                Text(recorder.note ?? (keys.recording != nil ? "Press the new shortcut, or Esc to cancel." : "Click a shortcut to change it. Right-click for more."))
+                Text(recorder.note ?? (keys.recording != nil ? L10n.tr("Press the new shortcut, or Esc to cancel.") : L10n.tr("Click a shortcut to change it. Right-click for more.")))
                     .font(.system(size: 11.5))
                     .foregroundStyle(recorder.note != nil ? Theme.text : Theme.textDim)
                     .lineLimit(2)
@@ -503,7 +504,7 @@ private struct ShortcutRow: View {
             Button("Change Shortcut") { recorder.start(action) }
             Button("Remove Shortcut") { keys.clear(action) }
                 .disabled(keys.combos(action).isEmpty)
-            Button("Restore Default (\(action.defaults.map(\.display).joined(separator: ", ")))") { keys.reset(action) }
+            Button(L10n.fmt("Restore Default (%@)", action.defaults.map(\.display).joined(separator: ", "))) { keys.reset(action) }
                 .disabled(!keys.isChanged(action))
         }
     }
@@ -665,8 +666,8 @@ private struct ToggleRow: View {
     var body: some View {
         HStack(alignment: .top, spacing: 16) {
             VStack(alignment: .leading, spacing: 3) {
-                Text(title).font(.system(size: 13, weight: .semibold)).foregroundStyle(Theme.text)
-                Text(note)
+                Text(L10n.tr(title)).font(.system(size: 13, weight: .semibold)).foregroundStyle(Theme.text)
+                Text(L10n.tr(note))
                     .font(.system(size: 11.5))
                     .foregroundStyle(Theme.textDim)
                     .fixedSize(horizontal: false, vertical: true)
@@ -700,19 +701,19 @@ private struct AppRow: View {
 
     private var note: String {
         switch (app, state) {
-        case (_, .missing): "Not on this Mac."
-        case (_, .working): "One moment…"
+        case (_, .missing): L10n.tr("Not on this Mac.")
+        case (_, .working): L10n.tr("One moment…")
         case (_, .failed(let message)): message
         case (.claude, .ready):
             connect.claudeAppOff && connect.claudeExtensionInstalled
-                ? "Disconnected. To remove Editroom from Claude too, use Claude's Settings > Extensions."
-                : "Adds Editroom to the Claude app as an extension."
-        case (.claude, .waiting): "Click Install in the Claude app to finish."
-        case (.claude, .connected): "Connected. Claude can edit here, and Magic can use it."
-        case (.chatgpt, .ready): "Adds Editroom to Codex in the ChatGPT app."
-        case (.chatgpt, .connected): "Connected. ChatGPT can edit here, and Magic can use it."
-        case (.claudeCode, .ready): "Adds Editroom to Claude Code for all your projects."
-        case (.claudeCode, .connected): "Connected. New Claude Code sessions can edit here."
+                ? L10n.tr("Disconnected. To remove Editroom from Claude too, use Claude's Settings > Extensions.")
+                : L10n.tr("Adds Editroom to the Claude app as an extension.")
+        case (.claude, .waiting): L10n.tr("Click Install in the Claude app to finish.")
+        case (.claude, .connected): L10n.tr("Connected. Claude can edit here, and Magic can use it.")
+        case (.chatgpt, .ready): L10n.tr("Adds Editroom to Codex in the ChatGPT app.")
+        case (.chatgpt, .connected): L10n.tr("Connected. ChatGPT can edit here, and Magic can use it.")
+        case (.claudeCode, .ready): L10n.tr("Adds Editroom to Claude Code for all your projects.")
+        case (.claudeCode, .connected): L10n.tr("Connected. New Claude Code sessions can edit here.")
         default: ""
         }
     }
@@ -747,7 +748,7 @@ private struct AppRow: View {
         switch state {
         case .missing:
             if let url = app.download {
-                PillButton(title: "Get \(app.title)", prominent: false) { NSWorkspace.shared.open(url) }
+                PillButton(title: L10n.fmt("Get %@", app.title), prominent: false) { NSWorkspace.shared.open(url) }
             }
         case .working:
             ProgressView().controlSize(.small).frame(width: 60)
@@ -774,11 +775,11 @@ private struct AppRow: View {
 
 /// Which version this is, and checking for new ones (Updates).
 private struct UpdateSettings: View {
-    private var version: String { Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "Development" }
+    private var version: String { Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? L10n.tr("Development") }
     private var build: String { Bundle.main.object(forInfoDictionaryKey: "CFBundleVersion") as? String ?? "—" }
     @ObservedObject private var updates = Updates.shared
     private var checked: String {
-        guard let d = updates.lastCheck else { return "Never" }
+        guard let d = updates.lastCheck else { return L10n.tr("Never") }
         return d.formatted(date: .abbreviated, time: .shortened)
     }
 
@@ -827,7 +828,7 @@ private struct UpdateSettings: View {
         @ViewBuilder let content: Content
         var body: some View {
             VStack(alignment: .leading, spacing: 12) {
-                Text(title).font(.system(size: 13, weight: .semibold)).foregroundStyle(Theme.text)
+                Text(L10n.tr(title)).font(.system(size: 13, weight: .semibold)).foregroundStyle(Theme.text)
                 content
             }
             .frame(maxWidth: .infinity, alignment: .leading)
@@ -841,7 +842,7 @@ private struct UpdateSettings: View {
         let value: String
         var body: some View {
             HStack(spacing: 8) {
-                Text(name).foregroundStyle(Theme.textDim)
+                Text(L10n.tr(name)).foregroundStyle(Theme.textDim)
                 Text(value).foregroundStyle(Theme.text).textSelection(.enabled)
             }
             .font(.system(size: 12.5))

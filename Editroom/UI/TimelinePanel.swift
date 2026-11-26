@@ -100,7 +100,7 @@ struct RangeReadout: View {
     private func point(_ label: String, _ t: Double) -> some View {
         Button { model.seek(to: t) } label: {
             HStack(spacing: 5) {
-                Text(label).font(.system(size: 11, weight: .medium)).foregroundStyle(Theme.textFaint)
+                Text(L10n.tr(label)).font(.system(size: 11, weight: .medium)).foregroundStyle(Theme.textFaint)
                 Text(Timecode.string(t, fps: model.project.fps))
                     .font(.system(size: 11, weight: .medium, design: .monospaced))
                     .foregroundStyle(Theme.text)
@@ -108,11 +108,11 @@ struct RangeReadout: View {
             .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
-        .help("Go to \(label) (\(label == "In" ? "I" : "O") sets it)")
+        .help(label == "In" ? L10n.tr("Go to In (I sets it)") : L10n.tr("Go to Out (O sets it)"))
     }
 
     static func length(_ s: Double) -> String {
-        if s < 60 { return s < 10 ? String(format: "%.1fs", s) : "\(Int(s.rounded()))s" }
+        if s < 60 { return s < 10 ? L10n.fmt("%.1f seconds", s) : L10n.fmt("%llds", Int(s.rounded())) }
         return Timecode.short(s)
     }
 }
@@ -137,7 +137,7 @@ struct ToolKey: View {
         .buttonStyle(.plain)
         .onHover { hovering = $0 }
         .animation(.easeOut(duration: 0.12), value: hovering)
-        .help(help)
+        .help(L10n.tr(help))
     }
 }
 
@@ -154,7 +154,7 @@ struct ToggleChip: View {
             // On is the same grey as the Split and Delete commands, off matches a disabled Delete: its
             // own 0.4 with macOS halving a disabled button again, so 0.2. Neither has a key behind it,
             // only a faint one on hover.
-            Text(title).font(.system(size: 11.5, weight: .medium))
+            Text(L10n.tr(title)).font(.system(size: 11.5, weight: .medium))
             .foregroundStyle(on ? (hovering ? Theme.text : Theme.textDim) : Theme.textDim.opacity(hovering ? 0.6 : 0.2))
             .padding(.horizontal, 10)
             .frame(height: 24)
@@ -164,7 +164,7 @@ struct ToggleChip: View {
         .buttonStyle(.plain)
         .onHover { hovering = $0 }
         .animation(.easeOut(duration: 0.12), value: hovering)
-        .help(help)
+        .help(L10n.tr(help))
     }
 }
 
@@ -178,7 +178,7 @@ struct TextAction: View {
 
     var body: some View {
         Button(action: action) {
-            Text(title)
+            Text(L10n.tr(title))
                 .font(.system(size: 11.5, weight: .medium))
                 .foregroundStyle(hovering ? Theme.text : Theme.textDim)
                 .padding(.horizontal, 9)
@@ -190,7 +190,7 @@ struct TextAction: View {
         .opacity(enabled ? 1 : 0.4)
         .onHover { hovering = $0 }
         .animation(.easeOut(duration: 0.12), value: hovering)
-        .help(help)
+        .help(L10n.tr(help))
     }
 }
 
@@ -514,7 +514,7 @@ struct CaptionHeader: View {
         .onTapGesture { model.focusCaptions() }
         .help("Captions: click for their style")
         .contextMenu {
-            Button(track.hidden ? "Show Captions" : "Hide Captions") { model.setCaptionsHidden(!track.hidden) }
+            Button(track.hidden ? L10n.tr("Show Captions") : L10n.tr("Hide Captions")) { model.setCaptionsHidden(!track.hidden) }
             Divider()
             Button("Delete Caption Track") { model.removeCaptionTrack() }
         }
@@ -530,7 +530,7 @@ struct AddTrackButton: View {
         Button(action: action) {
             HStack(spacing: 5) {
                 Image(systemName: "plus").font(.system(size: 9, weight: .bold))
-                Text(label).font(.system(size: 10, weight: .medium))
+                Text(L10n.tr(label)).font(.system(size: 10, weight: .medium))
                 Spacer()
             }
             .foregroundStyle(hovering ? Theme.text : Theme.textFaint)
@@ -542,7 +542,7 @@ struct AddTrackButton: View {
         .buttonStyle(.plain)
         .onHover { hovering = $0 }
         .animation(.easeOut(duration: 0.12), value: hovering)
-        .help("Add \(label) Track")
+        .help(label == "Video" ? L10n.tr("Add Video Track") : L10n.tr("Add Audio Track"))
     }
 }
 
@@ -575,11 +575,11 @@ struct TrackHeader: View {
                 LetterToggle(letter: "M", on: track.muted, color: Theme.text, help: "Mute") { update { $0.muted.toggle() } }
                 LetterToggle(letter: "S", on: track.solo, color: Theme.text, help: "Solo") { update { $0.solo.toggle() } }
             } else {
-                MiniKey(symbol: track.hidden ? "eye.slash" : "eye", on: track.hidden, help: track.hidden ? "Show" : "Hide") {
+                MiniKey(symbol: track.hidden ? "eye.slash" : "eye", on: track.hidden, help: track.hidden ? L10n.tr("Show") : L10n.tr("Hide")) {
                     update { $0.hidden.toggle() }
                 }
             }
-            MiniKey(symbol: "lock", on: track.locked, help: track.locked ? "Unlock" : "Lock") {
+            MiniKey(symbol: "lock", on: track.locked, help: track.locked ? L10n.tr("Unlock") : L10n.tr("Lock")) {
                 update { $0.locked.toggle() }
             }
             Spacer(minLength: 0)
@@ -612,7 +612,7 @@ struct TrackHeader: View {
                     }
                     Divider()
                     ForEach([-6.0, -12, -18, -24], id: \.self) { db in
-                        Toggle("Down \(Int(-db)) dB", isOn: Binding(get: { abs(track.duckDB - db) < 0.01 },
+                        Toggle(L10n.fmt("Down %lld dB", Int(-db)), isOn: Binding(get: { abs(track.duckDB - db) < 0.01 },
                                                                     set: { _ in model.duck(track.id, under: track.duckUnder, amount: db) }))
                     }
                 }
@@ -647,7 +647,7 @@ struct MiniKey: View {
         .buttonStyle(.plain)
         .onHover { hovering = $0 }
         .animation(.easeOut(duration: 0.12), value: hovering)
-        .help(help)
+        .help(L10n.tr(help))
     }
 }
 
@@ -673,7 +673,7 @@ struct LetterToggle: View {
         .buttonStyle(.plain)
         .onHover { hovering = $0 }
         .animation(.easeOut(duration: 0.12), value: hovering)
-        .help(help)
+        .help(L10n.tr(help))
     }
 }
 
@@ -715,7 +715,7 @@ struct LevelMeter: View {
             }
             .frame(maxHeight: .infinity, alignment: .bottom)
         }
-        .help(r.clipped ? "Clipping" : "Level")
+        .help(r.clipped ? L10n.tr("Clipping") : L10n.tr("Level"))
     }
 }
 

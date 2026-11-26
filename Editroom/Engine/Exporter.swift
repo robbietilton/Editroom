@@ -3,8 +3,14 @@ import AVFoundation
 import AppKit
 
 struct ExportSettings: Equatable {
-    enum Format: String, CaseIterable { case mp4 = "Video", wav = "Audio" }
-    enum Quality: String, CaseIterable { case high = "High", web = "Web" }
+    enum Format: String, CaseIterable {
+        case mp4 = "Video", wav = "Audio"
+        var label: String { L10n.tr(rawValue) }
+    }
+    enum Quality: String, CaseIterable {
+        case high = "High", web = "Web"
+        var label: String { L10n.tr(rawValue) }
+    }
     enum Codec: String, CaseIterable { case h264 = "H.264", hevc = "HEVC" }
 
     var format = Format.mp4
@@ -33,10 +39,10 @@ struct ExportSettings: Equatable {
 
         var label: String {
             switch self {
-            case .original: return "Sequence shape"
-            case .vertical: return "Vertical 9:16"
-            case .square: return "Square 1:1"
-            case .portrait: return "Portrait 4:5"
+            case .original: return L10n.tr("Sequence shape")
+            case .vertical: return L10n.tr("Vertical 9:16")
+            case .square: return L10n.tr("Square 1:1")
+            case .portrait: return L10n.tr("Portrait 4:5")
             }
         }
 

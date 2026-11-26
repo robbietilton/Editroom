@@ -19,11 +19,11 @@ enum LocalRamp {
     static func plan(request: String, pointers ptr: MagicPointers, project p: Project) -> LocalPointed.Outcome {
         let t = request.lowercased()
         guard let track = p.videoTracks.first(where: { tr in p.clips.contains { $0.trackID == tr.id && $0.kind == .video } }) else {
-            return LocalPointed.Outcome(said: "There are no video shots on the timeline.")
+            return LocalPointed.Outcome(said: L10n.tr("There are no video shots on the timeline."))
         }
         let shots = p.clips.filter { $0.trackID == track.id && $0.kind == .video && $0.playsSource && !p.isLocked($0.trackID) }
             .sorted { $0.start < $1.start }
-        guard !shots.isEmpty else { return LocalPointed.Outcome(said: "The main video track is locked, so nothing was changed.") }
+        guard !shots.isEmpty else { return LocalPointed.Outcome(said: L10n.tr("The main video track is locked, so nothing was changed.")) }
         // Pointed at: @clip names and selected clips.
         let found = MagicMention.find(in: request, media: p.assets, clips: MagicMention.clipLabels(p))
         var pointed = Set(found.compactMap { m -> UUID? in if case .clip(let id) = m.mention { return id } else { return nil } })
@@ -50,10 +50,9 @@ enum LocalRamp {
                     q.setRamp(ids: ids, speed: now.speed, points: points, start: fast, end: fast)
                 })
             }
-            guard !edits.isEmpty else { return LocalPointed.Outcome(said: "There are no cuts between shots to ramp into.") }
+            guard !edits.isEmpty else { return LocalPointed.Outcome(said: L10n.tr("There are no cuts between shots to ramp into.")) }
             return LocalPointed.Outcome(plan: MCPDraft.plan(base: p, edits: edits),
-                                        said: String(format: "Ramped up to %d%% into %d cut%@ and back down out of %@.",
-                                                     Int((fast * 100).rounded()), cuts, cuts == 1 ? "" : "s", cuts == 1 ? "it" : "them"))
+                                        said: L10n.fmt("Ramped up to %lld%% around %lld cuts.", Int((fast * 100).rounded()), cuts))
         }
 
         // A moment within a shot: the selected shots, else the one at the playhead, else the longest.
@@ -74,9 +73,9 @@ enum LocalRamp {
             })
         }
         let n = targets.count
-        let what = speed < 1 ? "Slowed" : "Sped up"
         return LocalPointed.Outcome(plan: MCPDraft.plan(base: p, edits: edits),
-                                    said: String(format: "%@ a moment in %@ to %d%%, easing in and out of it.", what,
-                                                 n == 1 ? "the shot" : "\(n) shots", Int((speed * 100).rounded())))
+                                    said: L10n.fmt("Eased a moment in %@ to %lld%% speed and back.",
+                                                 n == 1 ? L10n.tr("the shot") : L10n.fmt("%lld shots", n),
+                                                 Int((speed * 100).rounded())))
     }
 }

@@ -33,6 +33,12 @@ struct ColorGrade: Codable, Hashable {
         if BuiltInLook.named(look) != nil { return look }
         return URL(fileURLWithPath: look).deletingPathExtension().lastPathComponent
     }
+
+    var localizedLookLabel: String {
+        guard let look else { return L10n.tr("None") }
+        if BuiltInLook.named(look) != nil { return BuiltInLook.displayName(look) }
+        return URL(fileURLWithPath: look).deletingPathExtension().lastPathComponent
+    }
 }
 
 struct WheelPoint: Codable, Hashable {
@@ -108,6 +114,10 @@ enum BuiltInLook {
 
     static func named(_ name: String) -> GradeRecipe? {
         (all + retired).first { $0.name == name }?.recipe
+    }
+
+    static func displayName(_ name: String) -> String {
+        L10n.tr(name)
     }
 }
 

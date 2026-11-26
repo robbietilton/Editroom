@@ -64,10 +64,10 @@ enum FadeCurve: String, Codable, CaseIterable {
 
     var label: String {
         switch self {
-        case .linear: return "Linear"
-        case .easeIn: return "Exponential"
-        case .easeOut: return "Logarithmic"
-        case .smooth: return "S-Curve"
+        case .linear: return L10n.tr("Linear")
+        case .easeIn: return L10n.tr("Exponential")
+        case .easeOut: return L10n.tr("Logarithmic")
+        case .smooth: return L10n.tr("S-Curve")
         }
     }
 
@@ -172,9 +172,9 @@ enum TransitionKind: String, Codable, CaseIterable {
 
     var label: String {
         switch self {
-        case .dissolve: return "Dissolve"
-        case .dipToBlack: return "Dip to Black"
-        case .wipe: return "Wipe"
+        case .dissolve: return L10n.tr("Dissolve")
+        case .dipToBlack: return L10n.tr("Dip to Black")
+        case .wipe: return L10n.tr("Wipe")
         }
     }
 }
@@ -333,6 +333,7 @@ struct Project: Codable, Equatable {
 struct Marker: Codable, Hashable, Identifiable {
     enum Tint: String, Codable, CaseIterable {
         case white, yellow, green, blue, purple, red
+        var label: String { L10n.tr(rawValue.capitalized) }
         var hex: UInt32 {
             switch self {
             case .white: 0xEDEDEA
@@ -397,6 +398,16 @@ extension Project {
             return s.isEmpty ? "Text" : s
         case .solid: return "Solid"
         default: return asset(clip.assetID)?.name ?? "Missing"
+        }
+    }
+
+    func displayName(of clip: Clip) -> String {
+        switch clip.kind {
+        case .text:
+            let s = clip.text.string.replacingOccurrences(of: "\n", with: " ")
+            return s.isEmpty ? L10n.tr("Text") : s
+        case .solid: return L10n.tr("Solid")
+        default: return asset(clip.assetID)?.name ?? L10n.tr("Missing")
         }
     }
 

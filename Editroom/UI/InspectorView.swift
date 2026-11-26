@@ -69,12 +69,12 @@ struct InspectorView: View {
     private func title(_ clips: [Clip]) -> String {
         if clips.isEmpty, showsCaptions {
             let n = model.captionSelection.count
-            return n > 1 ? "\(n) captions" : n == 1 ? "Caption" : "Captions"
+            return n > 1 ? L10n.fmt("%lld captions", n) : n == 1 ? L10n.tr("Caption") : L10n.tr("Captions")
         }
-        if clips.isEmpty { return "Sequence" }
+        if clips.isEmpty { return L10n.tr("Sequence") }
         let groups = Set(clips.map { $0.linkID ?? $0.id })
-        if groups.count == 1, let c = primary(clips) { return model.project.name(of: c) }
-        return "\(clips.count) clips"
+        if groups.count == 1, let c = primary(clips) { return model.project.displayName(of: c) }
+        return L10n.fmt("%lld clips", clips.count)
     }
 
     private func headerSymbol(_ clips: [Clip]) -> String {
@@ -137,7 +137,7 @@ struct InspectorView: View {
             RowIconView(icon: .symbol(icon))
                 .foregroundStyle(on == false ? Theme.textFaint : Theme.textDim)
                 .frame(width: 18)
-            Text(label)
+            Text(L10n.tr(label))
                 .font(.system(size: 11.5))
                 .foregroundStyle(on == false ? Theme.textFaint : Theme.text)
             Spacer()
@@ -153,15 +153,17 @@ struct InspectorView: View {
 
     // MARK: Sequence
 
-    private static let sizes: [(String, Int, Int)] = [
-        ("4K  3840 × 2160", 3840, 2160),
-        ("1440p  2560 × 1440", 2560, 1440),
-        ("1080p  1920 × 1080", 1920, 1080),
-        ("720p  1280 × 720", 1280, 720),
-        ("Vertical  1080 × 1920", 1080, 1920),
-        ("Vertical 4K  2160 × 3840", 2160, 3840),
-        ("Square  1080 × 1080", 1080, 1080),
-    ]
+    private static var sizes: [(String, Int, Int)] {
+        [
+            ("4K  3840 × 2160", 3840, 2160),
+            ("1440p  2560 × 1440", 2560, 1440),
+            ("1080p  1920 × 1080", 1920, 1080),
+            ("720p  1280 × 720", 1280, 720),
+            (L10n.tr("Vertical  1080 × 1920"), 1080, 1920),
+            (L10n.tr("Vertical 4K  2160 × 3840"), 2160, 3840),
+            (L10n.tr("Square  1080 × 1080"), 1080, 1080),
+        ]
+    }
 
     @ViewBuilder private var sequenceSection: some View {
         let p = model.project
@@ -190,7 +192,7 @@ struct InspectorView: View {
     }
 
     static func fpsLabel(_ fps: Double) -> String {
-        (abs(fps - fps.rounded()) < 0.001 ? String(Int(fps)) : String(format: "%.2f", fps)) + " fps"
+        L10n.fmt("%@ fps", abs(fps - fps.rounded()) < 0.001 ? String(Int(fps)) : String(format: "%.2f", fps))
     }
 
     // MARK: Clips
@@ -466,11 +468,11 @@ struct InspectorView: View {
                 .font(.system(size: 11, weight: .medium))
                 .foregroundStyle(Theme.textDim)
                 .frame(width: 18)
-            Text(label)
+            Text(L10n.tr(label))
                 .font(.system(size: 11.5))
                 .foregroundStyle(Theme.text)
                 .frame(width: 52, alignment: .leading)
-            MenuField(label: t?.kind.label ?? "None", height: 26) {
+            MenuField(label: t?.kind.label ?? L10n.tr("None"), height: 26) {
                 Button("None") { model.setTransition(into: clip.id, nil) }
                 Divider()
                 ForEach(TransitionKind.allCases, id: \.self) { kind in
@@ -495,8 +497,8 @@ struct InspectorView: View {
                          }
                      })
             if actual < t.duration - 0.01 {
-                Text(actual > 0 ? String(format: "Shortened to %.2fs: no more media beyond the cut.", actual)
-                                : "Needs media beyond the cut to blend; try Dip to Black.")
+                Text(actual > 0 ? L10n.fmt("Shortened to %.2fs: no more media beyond the cut.", actual)
+                                : L10n.tr("Needs media beyond the cut to blend; try Dip to Black."))
                     .font(.system(size: 10))
                     .foregroundStyle(Theme.textFaint)
                     .padding(.leading, 26)
@@ -597,11 +599,11 @@ struct InspectorView: View {
                     .font(.system(size: 11.5))
                     .foregroundStyle(Theme.text)
                     .frame(width: 52, alignment: .leading)
-                MenuField(label: grade.lookLabel, height: 26) {
+                MenuField(label: grade.localizedLookLabel, height: 26) {
                     Button("None") { once { $0.look = nil } }
                     Divider()
                     ForEach(BuiltInLook.all, id: \.name) { item in
-                        Button(item.name) { once { $0.look = item.name } }
+                        Button(BuiltInLook.displayName(item.name)) { once { $0.look = item.name } }
                     }
                     Divider()
                     Button("Load .cube…") {
@@ -621,10 +623,10 @@ struct InspectorView: View {
     private func chooseCube() -> String? {
         let panel = NSOpenPanel()
         panel.allowedContentTypes = [UTType(filenameExtension: "cube") ?? .data]
-        panel.prompt = "Load"
+        panel.prompt = L10n.tr("Load")
         guard panel.runModal() == .OK, let url = panel.url else { return nil }
         guard GradeBaker.cubeFile(url.path) != nil else {
-            model.importError = "“\(url.lastPathComponent)” isn't a 3D .cube LUT this app can read."
+            model.importError = L10n.fmt("“%@” isn't a 3D .cube LUT this app can read.", url.lastPathComponent)
             return nil
         }
         return url.path
@@ -720,7 +722,7 @@ private struct InspectorSection<Content: View>: View {
                             .font(.system(size: 7.5, weight: .bold))
                             .rotationEffect(.degrees(collapsed ? 0 : 90))
                             .frame(width: 8)
-                        Text(title.uppercased())
+                        Text(L10n.tr(title).uppercased())
                             .font(Theme.label())
                             .kerning(1.6)
                         if marked && collapsed {
@@ -753,7 +755,7 @@ private struct TextLink: View {
 
     var body: some View {
         Button(action: action) {
-            Text(title)
+            Text(L10n.tr(title))
                 .font(.system(size: 11.5, weight: .medium))
                 .foregroundStyle(hovering ? Theme.accent : Theme.textDim)
                 .contentShape(Rectangle())
@@ -874,7 +876,7 @@ private struct ParamRow: View {
             RowIconView(icon: icon)
                 .foregroundStyle(Theme.textDim)
                 .frame(width: 18)
-            Text(label)
+            Text(L10n.tr(label))
                 .font(.system(size: 11.5))
                 .foregroundStyle(Theme.text)
                 .frame(width: 52, alignment: .leading)
@@ -1056,7 +1058,7 @@ private struct Chip: View {
 
     var body: some View {
         Button(action: action) {
-            Text(label)
+            Text(L10n.tr(label))
                 .font(.system(size: 10, weight: .medium))
                 .foregroundStyle(active ? Theme.accent : (hovering ? Theme.text : Theme.textDim))
                 .padding(.horizontal, 10)
@@ -1116,7 +1118,7 @@ private struct FontPicker: View {
     var body: some View {
         Button { open = true } label: {
             HStack(spacing: 8) {
-                Text(selection.isEmpty ? "System" : selection)
+                Text(selection.isEmpty ? L10n.tr("System") : selection)
                     .font(.system(size: 11.5))
                     .foregroundStyle(Theme.text)
                     .lineLimit(1)
@@ -1201,7 +1203,7 @@ private struct FontRow: View {
     var body: some View {
         Button(action: action) {
             HStack(spacing: 6) {
-                Text(family.isEmpty ? "System" : family)
+                Text(family.isEmpty ? L10n.tr("System") : family)
                     .font(family.isEmpty ? .system(size: 14) : .custom(family, size: 14))
                     .foregroundStyle(Theme.text)
                     .lineLimit(1)
@@ -1351,12 +1353,12 @@ private struct ColorWheel: View {
                 onChange(WheelPoint())
                 onEnd()
             })
-            Text(title)
+            Text(L10n.tr(title))
                 .font(.system(size: 11.5))
                 .foregroundStyle(active ? Theme.text : Theme.textDim)
         }
         .frame(maxWidth: .infinity)
-        .help("Drag to tint \(title.lowercased()). Double-click to reset.")
+        .help(L10n.fmt("Drag to tint %@. Double-click to reset.", L10n.tr(title).lowercased()))
     }
 }
 
@@ -1382,7 +1384,7 @@ private struct RampButton: View {
         .buttonStyle(.plain)
         .onHover { hovering = $0 }
         .animation(.easeOut(duration: 0.12), value: hovering)
-        .help(help ?? (on ? "Remove the speed ramp" : "Speed ramp: ease into and out of the speed"))
+        .help(L10n.tr(help ?? (on ? "Remove the speed ramp" : "Speed ramp: ease into and out of the speed")))
     }
 }
 
@@ -1994,7 +1996,7 @@ private struct ShapeLabels<M: Hashable>: View {
         HStack(spacing: 1.5) {
             ForEach(options, id: \.0) { value, label, help in
                 Button { pick(value) } label: {
-                    Text(label)
+                    Text(L10n.tr(label))
                         .font(.system(size: 10, weight: .medium))
                         .foregroundStyle(Theme.text.opacity(picked == value ? 1 : 0.55))
                         .padding(.horizontal, 6)
@@ -2003,7 +2005,7 @@ private struct ShapeLabels<M: Hashable>: View {
                         .contentShape(Rectangle())
                 }
                 .buttonStyle(.plain)
-                .help(help)
+                .help(L10n.tr(help))
             }
         }
         .padding(1.5)
@@ -2085,7 +2087,7 @@ private struct CaptionEye: View {
         }
         .buttonStyle(.plain)
         .onHover { hovering = $0 }
-        .help(on ? "Hide" : "Show")
+        .help(on ? L10n.tr("Hide") : L10n.tr("Show"))
     }
 }
 

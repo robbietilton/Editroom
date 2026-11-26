@@ -106,7 +106,9 @@ extension EditorModel {
         try? FileManager.default.removeItem(at: incoming)
         incomingCancels[drop] = nil
         for (p, d) in incomingDrop where d == drop { incomingDrop[p] = nil; incomingSelection.remove(p) }
-        if failed > 0 { importError = failed == 1 ? "One file couldn't be brought in." : "\(failed) files couldn't be brought in." }
+        if failed > 0 {
+            importError = failed == 1 ? L10n.tr("One file couldn't be brought in.") : L10n.fmt("%lld files couldn't be brought in.", failed)
+        }
     }
 
     /// Cancels picked imports: their placeholders go now, and as many of each drop's files are thrown away when they

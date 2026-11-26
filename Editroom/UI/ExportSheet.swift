@@ -40,7 +40,7 @@ struct ExportSheet: View {
             return ("\(item.0) (\(Int(s.width)) × \(Int(s.height)))", h)
         }
         let source = size(nil)
-        return [("Source (\(Int(source.width)) × \(Int(source.height)))", nil)] + scaled
+        return [(L10n.fmt("Source (%lld × %lld)", Int(source.width), Int(source.height)), nil)] + scaled
     }
 
     private var isVideo: Bool { settings.format == .mp4 }
@@ -72,12 +72,17 @@ struct ExportSheet: View {
         .onDisappear { player.stop() }
     }
 
-    static let loudnessTargets: [(String, Double?)] = [
-        ("As mixed", nil), ("−14 LUFS · web, YouTube", -14), ("−16 LUFS · podcasts", -16), ("−23 LUFS · broadcast", -23),
-    ]
+    static var loudnessTargets: [(String, Double?)] {
+        [
+            (L10n.tr("As mixed"), nil),
+            (L10n.tr("−14 LUFS · web, YouTube"), -14),
+            (L10n.tr("−16 LUFS · podcasts"), -16),
+            (L10n.tr("−23 LUFS · broadcast"), -23),
+        ]
+    }
 
     static func loudnessLabel(_ v: Double?) -> String {
-        guard let v else { return "As mixed" }
+        guard let v else { return L10n.tr("As mixed") }
         return "\(Int(v)) LUFS".replacingOccurrences(of: "-", with: "−")
     }
 
@@ -113,14 +118,14 @@ struct ExportSheet: View {
             }
             if let r = model.project.playRange {
                 row("Range") {
-                    SheetMenu(label: settings.rangeOnly ? "In to out · " + RangeReadout.length(r.end - r.start) : "Whole timeline", height: h) {
+                    SheetMenu(label: settings.rangeOnly ? L10n.tr("In to out · ") + RangeReadout.length(r.end - r.start) : L10n.tr("Whole timeline"), height: h) {
                         Button("In to out · " + RangeReadout.length(r.end - r.start)) { settings.rangeOnly = true; player.load(model, project: settings.output(model.project)) }
                         Button("Whole timeline") { settings.rangeOnly = false; player.load(model, project: model.project) }
                     }
                 }
             }
             row("Format") {
-                SheetMenu(label: isVideo ? "MP4 Video" : "WAV Audio", symbol: isVideo ? "film" : "waveform", height: h) {
+                SheetMenu(label: isVideo ? L10n.tr("MP4 Video") : L10n.tr("WAV Audio"), symbol: isVideo ? "film" : "waveform", height: h) {
                     Button("MP4 Video") { settings.format = .mp4 }
                     Button("WAV Audio") { settings.format = .wav }
                 }
@@ -151,7 +156,7 @@ struct ExportSheet: View {
                     }
                 }
                 row("Quality") {
-                    SheetMenu(label: settings.quality == .high ? "High" : "Web", height: h) {
+                    SheetMenu(label: settings.quality == .high ? L10n.tr("High") : L10n.tr("Web"), height: h) {
                         Button("High") { settings.quality = .high }
                         Button("Web") { settings.quality = .web }
                     }
@@ -177,7 +182,7 @@ struct ExportSheet: View {
 
     private func row<C: View>(_ title: String, @ViewBuilder _ content: () -> C) -> some View {
         HStack(spacing: 0) {
-            Text(title)
+            Text(L10n.tr(title))
                 .font(.system(size: 11.5))
                 .foregroundStyle(SheetStyle.label)
                 .frame(width: 84, alignment: .leading)
@@ -221,7 +226,7 @@ struct ExportSheet: View {
                     Spacer(minLength: 8)
                     stat(nil, InspectorView.fpsLabel(p.fps))
                 } else {
-                    stat("waveform", "48 kHz · 24-bit")
+                    stat("waveform", L10n.tr("48 kHz · 24-bit"))
                 }
                 Spacer(minLength: 8)
                 statDivider
@@ -284,7 +289,7 @@ struct ExportSheet: View {
         panel.canChooseDirectories = true
         panel.canCreateDirectories = true
         panel.directoryURL = folder
-        panel.prompt = "Choose"
+        panel.prompt = L10n.tr("Choose")
         if panel.runModal() == .OK, let url = panel.url { folder = url }
     }
 
@@ -301,16 +306,16 @@ struct ExportSheet: View {
         let url = folder.appendingPathComponent(clean + "." + settings.fileExtension)
         if FileManager.default.fileExists(atPath: url.path) {
             let alert = EditroomAlert()
-            alert.messageText = "Replace “\(url.lastPathComponent)”?"
-            alert.informativeText = "A file with this name already exists in \(folder.lastPathComponent)."
-            alert.addButton(withTitle: "Replace")
-            alert.addButton(withTitle: "Cancel")
+            alert.messageText = L10n.fmt("Replace “%@”?", url.lastPathComponent)
+            alert.informativeText = L10n.fmt("A file with this name already exists in %@.", folder.lastPathComponent)
+            alert.addButton(withTitle: L10n.tr("Replace"))
+            alert.addButton(withTitle: L10n.tr("Cancel"))
             guard alert.runModal() == .alertFirstButtonReturn else { return }
         }
         model.commitLive()
         let p = model.project
         if settings.format == .wav && !p.clips.contains(where: { $0.kind == .audio }) {
-            failure = "There's no audio on the timeline."
+            failure = L10n.tr("There's no audio on the timeline.")
             return
         }
         model.setExportTarget(name: clean, directory: folder.path)
@@ -617,7 +622,7 @@ struct PillButton: View {
 
     var body: some View {
         Button(action: action) {
-            Text(title)
+            Text(L10n.tr(title))
                 .font(.system(size: 11.5, weight: .semibold))
                 .foregroundStyle(prominent ? Theme.onText : Theme.text)
                 .padding(.horizontal, large ? 18 : 15)
@@ -666,7 +671,7 @@ private struct SheetMenu<Content: View>: View {
                 if let symbol {
                     Image(systemName: symbol).font(.system(size: 12, weight: .medium)).foregroundStyle(Theme.accent)
                 }
-                Text(label).font(.system(size: 11.5, weight: .medium)).foregroundStyle(SheetStyle.text).lineLimit(1)
+                Text(L10n.tr(label)).font(.system(size: 11.5, weight: .medium)).foregroundStyle(SheetStyle.text).lineLimit(1)
                 Spacer(minLength: 4)
                 Image(systemName: "chevron.down").font(.system(size: 8.5, weight: .bold)).foregroundStyle(SheetStyle.text.opacity(0.85))
             }

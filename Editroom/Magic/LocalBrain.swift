@@ -105,13 +105,13 @@ enum LocalBrain {
         if #available(macOS 26, *) {
             switch SystemLanguageModel.default.availability {
             case .available: return nil
-            case .unavailable(.appleIntelligenceNotEnabled): return "Turn on Apple Intelligence in System Settings to describe what you want."
-            case .unavailable(.modelNotReady): return "Apple Intelligence is still getting ready on this Mac."
-            case .unavailable: return "Describing what you want needs a Mac with Apple Intelligence."
+            case .unavailable(.appleIntelligenceNotEnabled): return L10n.tr("Turn on Apple Intelligence in System Settings to describe what you want.")
+            case .unavailable(.modelNotReady): return L10n.tr("Apple Intelligence is still getting ready on this Mac.")
+            case .unavailable: return L10n.tr("Describing what you want needs a Mac with Apple Intelligence.")
             }
         }
         #endif
-        return "Describing what you want needs macOS 26 or later with Apple Intelligence."
+        return L10n.tr("Describing what you want needs macOS 26 or later with Apple Intelligence.")
     }
 
     static var available: Bool { unavailableReason == nil }
@@ -405,11 +405,11 @@ enum LocalBrain {
                 r.moments = moments(of: words, in: showing, shows: shows)
                 return r
             } catch {
-                throw Failure(message: "Apple Intelligence couldn't read that: \(error.localizedDescription)")
+                throw Failure(message: L10n.fmt("Apple Intelligence couldn't read that: %@", error.localizedDescription))
             }
         }
         #endif
-        throw Failure(message: unavailableReason ?? "Apple Intelligence isn't available.")
+        throw Failure(message: unavailableReason ?? L10n.tr("Apple Intelligence isn't available."))
     }
 }
 

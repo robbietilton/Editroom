@@ -68,7 +68,7 @@ final class ActionItem: NSMenuItem {
 
     init(_ title: String, enabled: Bool = true, checked: Bool = false, _ handler: @escaping () -> Void) {
         self.handler = handler
-        super.init(title: title, action: #selector(fire), keyEquivalent: "")
+        super.init(title: L10n.tr(title), action: #selector(fire), keyEquivalent: "")
         target = self
         isEnabled = enabled
         state = checked ? .on : .off

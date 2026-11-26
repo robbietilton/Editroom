@@ -54,19 +54,19 @@ struct KeyCombo: Codable, Hashable {
         if shift { s += "⇧" }
         if command { s += "⌘" }
         switch key {
-        case "space": s += "Space"
+        case "space": s += L10n.tr("Space")
         case "delete": s += "⌫"
         case "forwardDelete": s += "⌦"
         case "left": s += "←"
         case "right": s += "→"
         case "up": s += "↑"
         case "down": s += "↓"
-        case "home": s += "Home"
-        case "end": s += "End"
+        case "home": s += L10n.tr("Home")
+        case "end": s += L10n.tr("End")
         case "return": s += "↩"
         case "tab": s += "⇥"
-        case "pageUp": s += "Page Up"
-        case "pageDown": s += "Page Down"
+        case "pageUp": s += L10n.tr("Page Up")
+        case "pageDown": s += L10n.tr("Page Down")
         default: s += key.uppercased()
         }
         return s
@@ -115,7 +115,7 @@ enum ShortcutAction: String, CaseIterable, Identifiable, Codable {
     var id: String { rawValue }
 
     var title: String {
-        switch self {
+        let key: String = switch self {
         case .new: "New"
         case .open: "Open…"
         case .save: "Save"
@@ -161,10 +161,12 @@ enum ShortcutAction: String, CaseIterable, Identifiable, Codable {
         case .skimming: "Skimming"
         case .audioScrubbing: "Audio Scrubbing"
         }
+        return L10n.tr(key)
     }
 
     enum Group: String, CaseIterable {
         case file = "File", edit = "Edit", playback = "Playback", tools = "Tools", clip = "Clip", mark = "Mark", view = "View"
+        var title: String { L10n.tr(rawValue) }
     }
 
     var group: Group {

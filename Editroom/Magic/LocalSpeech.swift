@@ -18,9 +18,9 @@ enum LocalSpeech {
     /// The cut, for these shots (nil: every shot on the main picture track).
     static func plan(project p: Project, only: Set<UUID>?, transcript: (UUID) -> Transcript?) -> LocalPointed.Outcome {
         guard let track = p.videoTracks.first(where: { t in p.clips.contains { $0.trackID == t.id && $0.kind == .video } }) else {
-            return LocalPointed.Outcome(said: "There are no video shots on the timeline.")
+            return LocalPointed.Outcome(said: L10n.tr("There are no video shots on the timeline."))
         }
-        guard !p.isLocked(track.id) else { return LocalPointed.Outcome(said: "The main video track is locked, so nothing was changed.") }
+        guard !p.isLocked(track.id) else { return LocalPointed.Outcome(said: L10n.tr("The main video track is locked, so nothing was changed.")) }
         let shots = p.clips.filter { $0.trackID == track.id && $0.kind == .video && (only?.contains($0.id) ?? true) }
             .sorted { $0.start < $1.start }
         // Timeline stretches to take out, latest first so earlier ones keep their place.
@@ -49,10 +49,10 @@ enum LocalSpeech {
         }
         guard talking > 0 else {
             return LocalPointed.Outcome(said: unheard > 0
-                ? "Editroom is still listening to your clips. Try again in a moment."
-                : "Nobody talks in \(only == nil ? "the edit" : "those clips"), so there were no pauses to cut.")
+                ? L10n.tr("Editroom is still listening to your clips. Try again in a moment.")
+                : L10n.tr("No speech was heard, so there were no pauses to cut."))
         }
-        guard !cuts.isEmpty else { return LocalPointed.Outcome(said: "The talking is already tight: no pauses long enough to cut.") }
+        guard !cuts.isEmpty else { return LocalPointed.Outcome(said: L10n.tr("The talking is already tight: no pauses long enough to cut.")) }
         let total = cuts.reduce(0) { $0 + ($1.end - $1.start) }
         let ordered = cuts.sorted { $0.start > $1.start }
         // The main picture track and the tracks its shots' own sound is on: cut together, moved together,
@@ -73,7 +73,7 @@ enum LocalSpeech {
             }
         }
         return LocalPointed.Outcome(plan: MCPDraft.plan(base: p, edits: [edit]),
-                                    said: String(format: "Cut %d pause%@ (%.1f seconds) from %d shot%@ with talking.",
-                                                 cuts.count, cuts.count == 1 ? "" : "s", total, talking, talking == 1 ? "" : "s"))
+                                    said: L10n.fmt("Cut %lld pauses (%.1f seconds) from %lld shots with talking.",
+                                                  cuts.count, total, talking))
     }
 }

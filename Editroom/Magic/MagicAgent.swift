@@ -20,7 +20,7 @@ final class MagicAgent: ObservableObject {
         case claude, chatgpt, local
         var id: String { rawValue }
         var kind: Kind? { self == .claude ? .claude : self == .chatgpt ? .chatgpt : nil }
-        var name: String { kind?.name ?? "Local" }
+        var name: String { kind?.name ?? L10n.tr("Local") }
     }
 
     /// What an AI said when it finished, shown under the Magic button.
@@ -107,15 +107,19 @@ final class MagicAgent: ObservableObject {
 
     static func effortName(_ e: String) -> String {
         switch e {
-        case "xhigh": "Extra high"
+        case "xhigh": L10n.tr("Extra high")
+        case "low": L10n.tr("Low")
+        case "medium": L10n.tr("Medium")
+        case "high": L10n.tr("High")
+        case "max": L10n.tr("Max")
         default: e.prefix(1).uppercased() + e.dropFirst()
         }
     }
 
     static func effortBlurb(_ e: String) -> String {
         switch e {
-        case "low": "Quickest"
-        case "max": "Slowest"
+        case "low": L10n.tr("Quickest")
+        case "max": L10n.tr("Slowest")
         default: ""
         }
     }
@@ -126,8 +130,8 @@ final class MagicAgent: ObservableObject {
         case .claude:
             let efforts = ["low", "medium", "high", "xhigh", "max"]
             return [
-                ("claude-opus-5-5", "Opus 5.5", "Best edits"), ("claude-sonnet-5-5", "Sonnet 5.5", "Fast"),
-                ("claude-haiku-5-5", "Haiku 5.5", "Fastest"), ("claude-fable-5-2", "Fable 5.2", "Most capable"),
+                ("claude-opus-5-5", "Opus 5.5", L10n.tr("Best edits")), ("claude-sonnet-5-5", "Sonnet 5.5", L10n.tr("Fast")),
+                ("claude-haiku-5-5", "Haiku 5.5", L10n.tr("Fastest")), ("claude-fable-5-2", "Fable 5.2", L10n.tr("Most capable")),
             ].map { ModelOption(id: $0.0, name: $0.1, blurb: $0.2, efforts: efforts) }
         case .chatgpt:
             // Just these, in this order. Names and efforts come from Codex's own list when it has them.
@@ -374,13 +378,13 @@ final class MagicAgent: ObservableObject {
         running = true
         agent = kind
         note = nil
-        status = "\(kind.name) is starting"
+        status = L10n.tr("Starting")
         started = Date()
         runDetail = modelLabel(for: kind)
         log("MAGIC AI \(kind.rawValue) request \"\(request)\"")
         Task {
             guard await serverReady() else {
-                alert("Couldn't start Magic", "Editroom couldn't open its connection for \(kind.name).")
+                alert(L10n.tr("Couldn't start Magic"), L10n.fmt("Editroom couldn't open its connection for %@.", kind.name))
                 return done()
             }
             guard await signIn(kind, cli) else { return done() }
@@ -388,7 +392,7 @@ final class MagicAgent: ObservableObject {
             let d = MCPDraft.open(model.project, model: model)
             d.playhead = pointers.playhead
             draft = d
-            status = "\(kind.name) is thinking"
+            status = L10n.tr("Thinking")
             // The thinking show, driven by its tool calls (see MCPHandler).
             MagicThinking.begin(model: model, name: kind.name, color: MCPTools.color(for: kind == .claude ? "Claude" : "ChatGPT"))
             launch(kind, cli, url: "\(endpoint)?draft=\(d.token)", brief: Self.brief(request: request, project: model.project, pointers: pointers))
@@ -429,18 +433,18 @@ final class MagicAgent: ObservableObject {
     private func signIn(_ kind: Kind, _ cli: URL) async -> Bool {
         if await signedIn(kind, cli) { return true }
         let ask = EditroomAlert()
-        ask.messageText = "Sign in to \(kind.name)"
+        ask.messageText = L10n.fmt("Sign in to %@", kind.name)
         ask.informativeText = kind == .claude
-            ? "Magic uses Claude through Claude Code on this Mac, with your Claude plan. It needs signing in once, in your browser."
-            : "Magic uses ChatGPT through Codex, which comes with the ChatGPT app, with your ChatGPT plan. It needs signing in once, in your browser."
-        ask.addButton(withTitle: "Sign In")
-        ask.addButton(withTitle: "Cancel")
+            ? L10n.tr("Magic uses Claude through Claude Code on this Mac, with your Claude plan. It needs signing in once, in your browser.")
+            : L10n.tr("Magic uses ChatGPT through Codex, which comes with the ChatGPT app, with your ChatGPT plan. It needs signing in once, in your browser.")
+        ask.addButton(withTitle: L10n.tr("Sign In"))
+        ask.addButton(withTitle: L10n.tr("Cancel"))
         guard ask.runModal() == .alertFirstButtonReturn else { return false }
-        status = "Signing in to \(kind.name)"
+        status = L10n.fmt("Signing in to %@", kind.name)
         let out = await run(cli, kind == .claude ? ["auth", "login", "--claudeai"] : ["login"])
         guard !stopped else { return false }
         if await signedIn(kind, cli) { return true }
-        alert("\(kind.name) isn't signed in", out.isEmpty ? "Signing in didn't finish." : String(out.prefix(600)))
+        alert(L10n.fmt("%@ isn't signed in", kind.name), out.isEmpty ? L10n.tr("Signing in didn't finish.") : String(out.prefix(600)))
         return false
     }
 
@@ -552,7 +556,7 @@ final class MagicAgent: ObservableObject {
         do {
             try p.run()
         } catch {
-            alert("Couldn't start \(kind.name)", error.localizedDescription)
+            alert(L10n.fmt("Couldn't start %@", kind.name), error.localizedDescription)
             return done()
         }
         input.fileHandleForWriting.write(Data(brief.utf8))
@@ -579,7 +583,7 @@ final class MagicAgent: ObservableObject {
         case "result":
             lastMessage = json["result"] as? String ?? lastMessage
             if (json["is_error"] as? Bool ?? false) || json["subtype"] as? String != "success" {
-                failure = lastMessage.isEmpty ? "Claude stopped (\(json["subtype"] as? String ?? "error"))." : lastMessage
+                failure = lastMessage.isEmpty ? L10n.fmt("Claude stopped (%@).", json["subtype"] as? String ?? "error") : lastMessage
             }
         case "assistant":
             guard let content = (json["message"] as? [String: Any])?["content"] as? [[String: Any]] else { return }
@@ -602,7 +606,7 @@ final class MagicAgent: ObservableObject {
         case ("item.completed", "agent_message"):
             if let text = item["text"] as? String, !text.isEmpty { lastMessage = text }
         case ("turn.failed", _):
-            failure = ((json["error"] as? [String: Any])?["message"] as? String) ?? "ChatGPT stopped."
+            failure = ((json["error"] as? [String: Any])?["message"] as? String) ?? L10n.tr("ChatGPT stopped.")
         case ("error", _):
             failure = json["message"] as? String ?? failure
         default: break
@@ -612,25 +616,25 @@ final class MagicAgent: ObservableObject {
     private func toolCalled(_ tool: String) {
         guard let kind = agent else { return }
         log("MAGIC AI tool \(tool)")
-        status = "\(kind.name) is " + Self.doing(tool)
+        status = Self.doing(tool)
     }
 
     private static func doing(_ tool: String) -> String {
         switch tool {
-        case "list_media", "get_project", "list_looks": "reading"
-        case "look_at_media": "watching"
-        case "note_media": "noting"
-        case "analyze_media": "studying"
-        case "get_transcript": "listening"
-        case "add_clip", "trim_clip", "move_clip", "split_clip", "delete_clips", "set_sequence", "add_track": "cutting"
-        case "set_grade": "grading"
-        case "add_title", "set_title_style": "titling"
-        case "search_media": "searching"
-        case "set_marker", "delete_markers", "set_in_out": "marking"
-        case "set_transform", "freeze_frame", "reverse_clip", "detach_audio", "duplicate_clip", "add_solid", "set_solid_color", "set_track": "editing"
-        case "set_audio", "set_transition": "finishing"
-        case "get_frame", "playback", "history": "checking"
-        default: "thinking"
+        case "list_media", "get_project", "list_looks": L10n.tr("Reading")
+        case "look_at_media": L10n.tr("Watching")
+        case "note_media": L10n.tr("Noting")
+        case "analyze_media": L10n.tr("Studying")
+        case "get_transcript": L10n.tr("Listening")
+        case "add_clip", "trim_clip", "move_clip", "split_clip", "delete_clips", "set_sequence", "add_track": L10n.tr("Cutting")
+        case "set_grade": L10n.tr("Grading")
+        case "add_title", "set_title_style": L10n.tr("Titling")
+        case "search_media": L10n.tr("Searching")
+        case "set_marker", "delete_markers", "set_in_out": L10n.tr("Marking")
+        case "set_transform", "freeze_frame", "reverse_clip", "detach_audio", "duplicate_clip", "add_solid", "set_solid_color", "set_track": L10n.tr("Editing")
+        case "set_audio", "set_transition": L10n.tr("Finishing")
+        case "get_frame", "playback", "history": L10n.tr("Checking")
+        default: L10n.tr("Thinking")
         }
     }
 
@@ -648,11 +652,11 @@ final class MagicAgent: ObservableObject {
         if edits.isEmpty { MagicThinking.current?.end() }
         if let failure, edits.isEmpty {
             log("MAGIC AI failure: \(failure) \(stderr.suffix(400))")
-            return alert("\(kind.name) couldn't make the edit", String(failure.prefix(600)))
+            return alert(L10n.fmt("%@ couldn't make the edit", kind.name), String(failure.prefix(600)))
         }
         if edits.isEmpty, code != 0 {
             log("MAGIC AI failure: exit \(code) \(stderr.suffix(400))")
-            return alert("\(kind.name) couldn't make the edit", String((stderr.isEmpty ? "It stopped (code \(code))." : stderr).suffix(600)))
+            return alert(L10n.fmt("%@ couldn't make the edit", kind.name), String((stderr.isEmpty ? L10n.fmt("It stopped (code %d).", code) : stderr).suffix(600)))
         }
         let said = lastMessage.trimmingCharacters(in: .whitespacesAndNewlines)
         // Played now, even from another app: it doesn't wait to be watched (the Dock icon bounces to say so).
@@ -664,7 +668,7 @@ final class MagicAgent: ObservableObject {
     private func reveal(_ kind: Kind, _ edits: [MagicEdit], _ said: String) {
         guard !stopped else { return }
         guard let model, !edits.isEmpty else {
-            note = Note(agent: kind, text: said.isEmpty ? "\(kind.name) didn't change anything." : said, changed: false, detail: noteDetail)
+            note = Note(agent: kind, text: said.isEmpty ? L10n.fmt("%@ didn't change anything.", kind.name) : said, changed: false, detail: noteDetail)
             return
         }
         // Played onto the timeline as it is now (in case it changed while the AI was thinking).
@@ -693,7 +697,7 @@ final class MagicAgent: ObservableObject {
     }
 
     private var noteDetail: String {
-        "\(runDetail) · \(Int(lastSeconds.rounded()))s"
+        L10n.fmt("%@ · %llds", runDetail, Int(lastSeconds.rounded()))
     }
 
     private func alert(_ title: String, _ text: String) {

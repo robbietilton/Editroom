@@ -1037,7 +1037,7 @@ final class TimelineCanvas: NSView {
                 menu.addItem(ActionItem(!h.clip.isReversed ? "Reverse" : "Play Forwards", enabled: !h.clip.isFreeze) { model.reverseSelection() })
             }
             if h.clip.playsSource {
-                let speed = NSMenuItem(title: "Speed", action: nil, keyEquivalent: "")
+                let speed = NSMenuItem(title: L10n.tr("Speed"), action: nil, keyEquivalent: "")
                 let sub = NSMenu()
                 sub.autoenablesItems = false
                 for pct in [25, 50, 100, 200, 400, 800, 1600, 3000] {
@@ -1050,7 +1050,7 @@ final class TimelineCanvas: NSView {
             if h.clip.kind != .audio {
                 let project = model.project
                 func transitionMenu(_ title: String, into clip: Clip) -> NSMenuItem {
-                    let item = NSMenuItem(title: title, action: nil, keyEquivalent: "")
+                    let item = NSMenuItem(title: L10n.tr(title), action: nil, keyEquivalent: "")
                     let sub = NSMenu()
                     sub.autoenablesItems = false
                     sub.addItem(ActionItem("None", checked: clip.transitionIn == nil) { model.setTransition(into: clip.id, nil) })
@@ -1094,7 +1094,7 @@ final class TimelineCanvas: NSView {
                 menu.addItem(.separator())
                 menu.addItem(ActionItem("Copy Grade", enabled: model.canCopyGrade) { model.copyGrade() })
                 let count = model.project.clips.filter { model.selection.contains($0.id) && $0.kind != .audio }.count
-                menu.addItem(ActionItem(count > 1 ? "Paste Grade to \(count) Clips" : "Paste Grade", enabled: model.canPasteGrade) { model.pasteGrade() })
+                menu.addItem(ActionItem(count > 1 ? L10n.fmt("Paste Grade to %lld Clips", count) : "Paste Grade", enabled: model.canPasteGrade) { model.pasteGrade() })
             }
             if h.clip.kind == .video, let asset = model.project.asset(h.clip.assetID ?? UUID()) {
                 menu.addItem(.separator())
@@ -1202,7 +1202,7 @@ final class TimelineCanvas: NSView {
             let files = (sender.draggingPasteboard.readObjects(forClasses: [NSURL.self], options: [.urlReadingFileURLsOnly: true]) as? [URL]) ?? []
             fileGhostLabel = files.first.map { f in
                 let name = f.deletingPathExtension().lastPathComponent
-                return files.count > 1 ? "\(name) + \(files.count - 1) more" : name
+        return files.count > 1 ? L10n.fmt("%@ and %lld more", name, files.count - 1) : name
             }
         }
         dropInfo = (vTrack, aTrack, start)
@@ -1308,7 +1308,7 @@ final class TimelineCanvas: NSView {
 
         // An empty timeline says how to fill it, across V1.
         if project.clips.isEmpty, ghosts.isEmpty, let v1 = project.videoTracks.first, let band = layout.band(for: v1.id) {
-            let hint = NSAttributedString(string: "Drag media here, or double-click it in the library", attributes: Self.hintAttrs)
+            let hint = NSAttributedString(string: L10n.tr("Drag media here, or double-click it in the library"), attributes: Self.hintAttrs)
             let size = hint.size()
             let y = ruler + band.y - view.scrollY + (band.height - size.height) / 2
             hint.draw(at: CGPoint(x: (bounds.width - size.width) / 2, y: y))
@@ -1486,7 +1486,7 @@ final class TimelineCanvas: NSView {
     private func drawCaptions(_ ctx: CGContext, lane: CGRect, dim: Bool) {
         let blocks = shownCaptions
         if blocks.isEmpty {
-            let note = model.captionsWaiting ? "Listening for what's said…" : "No speech heard in the captioned clips"
+            let note = model.captionsWaiting ? L10n.tr("Listening for what's said…") : L10n.tr("No speech heard in the captioned clips")
             let hint = NSAttributedString(string: note, attributes: Self.hintAttrs)
             hint.draw(at: CGPoint(x: 12, y: lane.midY - hint.size().height / 2))
             return
@@ -1762,9 +1762,9 @@ final class TimelineCanvas: NSView {
             }
             // Files from Finder being dropped have no library item yet: their outline shows the file's name, not "Missing".
             var label = c.assetID == nil && c.kind.usesSource && ghosts.contains(where: { $0.id == c.id })
-                ? (fileGhostLabel ?? "") : model.project.name(of: c)
-            if c.isFreeze { label += "   Freeze" } else if abs(c.speed - 1) > 0.001 { label += "   \(Int((c.speed * 100).rounded()))%" }
-            if c.isReversed { label += "   Reversed" }
+                ? (fileGhostLabel ?? "") : model.project.displayName(of: c)
+            if c.isFreeze { label += "   " + L10n.tr("Freeze") } else if abs(c.speed - 1) > 0.001 { label += "   \(Int((c.speed * 100).rounded()))%" }
+            if c.isReversed { label += "   " + L10n.tr("Reversed") }
             if c.kind == .audio, abs(c.gainDB) > 0.05 { label += "   " + formatDB(c.gainDB) }
             var lx = max(r.minX, 0) + 8
             if r.width > 36, c.fadeIn > 0 { lx = max(lx, fadeHandleX(c, r, fadeIn: true) + 10) }
@@ -1775,7 +1775,7 @@ final class TimelineCanvas: NSView {
             if let grade = c.grade, !grade.isNeutral, c.kind != .audio {
                 let x = lx + (label as NSString).size(withAttributes: Self.labelAttrs).width + 9
                 drawGradeWheel(center: CGPoint(x: x + 4.5, y: r.minY + 9.5), radius: 4.5, ctx: ctx)
-                let tag = grade.look != nil ? grade.lookLabel : "Graded"
+                let tag = grade.look != nil ? grade.localizedLookLabel : L10n.tr("Graded")
                 (tag as NSString).draw(at: CGPoint(x: x + 13, y: r.minY + 2.5), withAttributes: Self.labelAttrs)
             }
             ctx.restoreGState()
@@ -2124,7 +2124,7 @@ struct MarkerPanel: View {
                             .contentShape(Circle())
                     }
                     .buttonStyle(.plain)
-                    .help(tint.rawValue.capitalized)
+                    .help(tint.label)
                 }
                 Spacer()
                 Button { model.deleteMarker(id) } label: {

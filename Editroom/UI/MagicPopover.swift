@@ -46,22 +46,22 @@ struct MagicPopover: View {
     @ViewBuilder private var content: some View {
         if let kind = ai.tab.kind {
             if justConnected == kind {
-                Centered(logo: AppLogo(kind: kind, size: 36), title: "\(kind.name) is connected",
-                         text: kind == .claude ? "Tell it what to make. You can disconnect any time in AI Agents."
-                                               : "Tell it what to make. To edit from the ChatGPT app as well, quit and reopen it once.") {
+                Centered(logo: AppLogo(kind: kind, size: 36), title: L10n.fmt("%@ is connected", kind.name),
+                         text: kind == .claude ? L10n.tr("Tell it what to make. You can disconnect any time in AI Agents.")
+                                               : L10n.tr("Tell it what to make. To edit from the ChatGPT app as well, quit and reopen it once.")) {
                     PillButton(title: "Continue", prominent: true) { justConnected = nil }
                 }
             } else if !ai.installed(kind) {
-                Centered(logo: AppLogo(kind: kind, size: 36), title: "Get the \(kind.name) app",
-                         text: kind == .claude ? "Claude edits for you through the Claude app on this Mac. Install it, then come back to connect."
-                                               : "ChatGPT edits for you through Codex in the ChatGPT app on this Mac. Install it, then come back to connect.") {
-                    PillButton(title: "Download \(kind.name)", prominent: true) {
+                Centered(logo: AppLogo(kind: kind, size: 36), title: L10n.fmt("Get the %@ app", kind.name),
+                         text: kind == .claude ? L10n.tr("Claude edits for you through the Claude app on this Mac. Install it, then come back to connect.")
+                                               : L10n.tr("ChatGPT edits for you through Codex in the ChatGPT app on this Mac. Install it, then come back to connect.")) {
+                    PillButton(title: L10n.fmt("Download %@", kind.name), prominent: true) {
                         if let url = (kind == .claude ? AgentApp.claude : AgentApp.chatgpt).download { NSWorkspace.shared.open(url) }
                     }
                 }
             } else if kind == .claude, connections.states[.claude] == .waiting {
-                Centered(logo: AppLogo(kind: kind, size: 36), title: "Finish in the Claude app",
-                         text: "Claude is asking whether to add Editroom. Click Install there and this updates by itself.") {
+                Centered(logo: AppLogo(kind: kind, size: 36), title: L10n.tr("Finish in the Claude app"),
+                         text: L10n.tr("Claude is asking whether to add Editroom. Click Install there and this updates by itself.")) {
                     HStack(spacing: 8) {
                         PillButton(title: "Cancel", prominent: false) {
                             connecting = nil
@@ -71,11 +71,11 @@ struct MagicPopover: View {
                     }
                 }
             } else if !ai.connected(kind) {
-                Centered(logo: AppLogo(kind: kind, size: 36), title: "Connect \(kind.name)",
-                         text: kind == .claude ? "Let Claude edit for you, with your Claude plan. Nothing is shared until you ask it to make an edit."
-                                               : "Let ChatGPT edit for you, with your ChatGPT plan. It works through Codex in the ChatGPT app.") {
+                Centered(logo: AppLogo(kind: kind, size: 36), title: L10n.fmt("Connect %@", kind.name),
+                         text: kind == .claude ? L10n.tr("Let Claude edit for you, with your Claude plan. Nothing is shared until you ask it to make an edit.")
+                                               : L10n.tr("Let ChatGPT edit for you, with your ChatGPT plan. It works through Codex in the ChatGPT app.")) {
                     VStack(spacing: 7) {
-                        PillButton(title: "Connect \(kind.name)", prominent: true) { connect(kind) }
+                        PillButton(title: L10n.fmt("Connect %@", kind.name), prominent: true) { connect(kind) }
                         Text("No API key needed").font(.system(size: 10.5)).foregroundStyle(Theme.textFaint)
                     }
                 }
@@ -85,8 +85,8 @@ struct MagicPopover: View {
             } else if !ai.runnable(kind) {
                 // Connected for use from the Claude app, but Magic runs Claude Code, which the Claude
                 // app installs the first time its Code tab is opened.
-                Centered(logo: AppLogo(kind: kind, size: 36), title: "Open Claude Code once",
-                         text: "Magic uses Claude Code, which comes with the Claude app. Open the Claude app's Code tab once, then come back.") {
+                Centered(logo: AppLogo(kind: kind, size: 36), title: L10n.tr("Open Claude Code once"),
+                         text: L10n.tr("Magic uses Claude Code, which comes with the Claude app. Open the Claude app's Code tab once, then come back.")) {
                     PillButton(title: "Open Claude", prominent: true) {
                         if let url = AgentConnect.appURL(AgentConnect.claudeBundleID) {
                             NSWorkspace.shared.openApplication(at: url, configuration: NSWorkspace.OpenConfiguration())
@@ -119,8 +119,8 @@ struct MagicPopover: View {
                     // Apple's on-device model reads the request into settings Local follows.
                     PromptBox(model: model, text: $ai.prompt,
                               placeholder: hasEdit
-                                ? "Describe what to change (length, pace, look, music, vertical), or leave this empty to improve the edit."
-                                : "Describe the video you want (length, pace, look, music, vertical), or leave this empty for the best cut.",
+                                ? L10n.tr("Describe what to change (length, pace, look, music, vertical), or leave this empty to improve the edit.")
+                                : L10n.tr("Describe the video you want (length, pace, look, music, vertical), or leave this empty for the best cut."),
                               submit: goLocal)
                         .padding(.bottom, 11)
                 } else if let why = LocalBrain.unavailableReason {
@@ -305,40 +305,40 @@ private struct PromptForm: View {
     let go: () -> Void
 
     private static let make: [Idea] = [
-        ("Story", "book",
-         "Make the best story you can from this footage: a clear beginning, middle and end, the strongest moments where they land hardest, and shots left to breathe where it matters."),
-        ("Highlight reel", "sparkles",
-         "Make a 30 to 60 second highlight reel of the best moments, cut to the beat of the music, opening on the strongest shot and ending on a bar."),
-        ("Timelapse", "timer",
-         "Make a timelapse over the music: speed the footage up, cut out the dead space where nothing changes, keep the moments where something happens, and end on the strongest shot."),
-        ("Vlog", "person.wave.2",
-         "Make an engaging vlog, up to 8 minutes: hook in the first few seconds, keep the parts where someone is talking or something happens, cut pauses, retakes and repeats, and add short titles to mark each part."),
-        ("Vertical reel", "iphone",
-         "Make a fast, punchy 15 to 30 second vertical video for Reels and TikTok: 1080 by 1920, a hook in the first second, quick cuts on the beat."),
+        (L10n.tr("Story"), "book",
+         L10n.tr("Make the best story you can from this footage: a clear beginning, middle and end, the strongest moments where they land hardest, and shots left to breathe where it matters.")),
+        (L10n.tr("Highlight reel"), "sparkles",
+         L10n.tr("Make a 30 to 60 second highlight reel of the best moments, cut to the beat of the music, opening on the strongest shot and ending on a bar.")),
+        (L10n.tr("Timelapse"), "timer",
+         L10n.tr("Make a timelapse over the music: speed the footage up, cut out the dead space where nothing changes, keep the moments where something happens, and end on the strongest shot.")),
+        (L10n.tr("Vlog"), "person.wave.2",
+         L10n.tr("Make an engaging vlog, up to 8 minutes: hook in the first few seconds, keep the parts where someone is talking or something happens, cut pauses, retakes and repeats, and add short titles to mark each part.")),
+        (L10n.tr("Vertical reel"), "iphone",
+         L10n.tr("Make a fast, punchy 15 to 30 second vertical video for Reels and TikTok: 1080 by 1920, a hook in the first second, quick cuts on the beat.")),
     ]
 
     private static let improve: [Idea] = [
-        ("Tighten it", "scissors",
-         "Make this shorter so people keep watching: open on the strongest moment, cut the slow starts and ends of shots, and drop weak or repeated shots."),
-        ("Cut to the beat", "metronome",
-         "Recut this to the beat of the music: cuts on beats, the biggest moments on bar starts, and end on a bar."),
-        ("Smooth it out", "wind",
-         "Smooth this out: fix jumpy cuts, add a dissolve only where the scene changes, even out the sound, and fade in and out."),
-        ("One look", "camera.filters",
-         "Give it one consistent look: the same warm film grade on every shot, matched in brightness so it feels like one film."),
+        (L10n.tr("Tighten it"), "scissors",
+         L10n.tr("Make this shorter so people keep watching: open on the strongest moment, cut the slow starts and ends of shots, and drop weak or repeated shots.")),
+        (L10n.tr("Cut to the beat"), "metronome",
+         L10n.tr("Recut this to the beat of the music: cuts on beats, the biggest moments on bar starts, and end on a bar.")),
+        (L10n.tr("Smooth it out"), "wind",
+         L10n.tr("Smooth this out: fix jumpy cuts, add a dissolve only where the scene changes, even out the sound, and fade in and out.")),
+        (L10n.tr("One look"), "camera.filters",
+         L10n.tr("Give it one consistent look: the same warm film grade on every shot, matched in brightness so it feels like one film.")),
     ]
 
     private static let sound: [Idea] = [
-        ("Find music", "magnifyingglass",
-         "Find music that suits this video and add it to the timeline. Make sure the music is royalty free and does not require attribution."),
-        ("Music and levels", "music.note",
-         "Pick the best music in my Media for this edit, cut so the music and pictures land together, keep voices clear over it, and fade in and out."),
+        (L10n.tr("Find music"), "magnifyingglass",
+         L10n.tr("Find music that suits this video and add it to the timeline. Make sure the music is royalty free and does not require attribution.")),
+        (L10n.tr("Music and levels"), "music.note",
+         L10n.tr("Pick the best music in my Media for this edit, cut so the music and pictures land together, keep voices clear over it, and fade in and out.")),
     ]
 
     private var placeholder: String {
         hasEdit
-            ? "Describe what to change, or leave this empty and \(kind.name) will make the best video it can from your Media."
-            : "Describe the video you want, or leave this empty and \(kind.name) will make the best video it can from the clips and music in your Media."
+            ? L10n.fmt("Describe what to change, or leave this empty and %@ will make the best video it can from your Media.", kind.name)
+            : L10n.fmt("Describe the video you want, or leave this empty and %@ will make the best video it can from the clips and music in your Media.", kind.name)
     }
 
     var body: some View {
@@ -350,7 +350,7 @@ private struct PromptForm: View {
                 Spacer()
                 // Ideas fill the box, to send as they are or change first.
                 HStack(spacing: 5) {
-                    IdeasMenu(sections: (hasEdit ? [("Improve", Self.improve)] : []) + [("Create", Self.make), ("Sound", Self.sound)],
+                    IdeasMenu(sections: (hasEdit ? [(L10n.tr("Improve"), Self.improve)] : []) + [(L10n.tr("Create"), Self.make), (L10n.tr("Sound"), Self.sound)],
                               use: use)
                     HistoryMenu(model: model, use: use)
                 }
@@ -365,7 +365,7 @@ private struct PromptForm: View {
                         ModelChip(ai: ai, kind: kind, manage: manage)
                         EffortChip(ai: ai, kind: kind)
                     }
-                    PlanNote(text: "Uses your \(kind.name) plan")
+                    PlanNote(text: L10n.fmt("Uses your %@ plan", kind.name))
                 }
                 Spacer()
                 PillButton(title: "Make it", prominent: true, action: go)
@@ -386,23 +386,23 @@ private typealias Idea = (name: String, symbol: String, prompt: String)
 /// sound effects, levels), said the short way its reader understands best.
 private enum LocalIdeas {
     static let improve: [Idea] = [
-        ("Tighten it", "scissors", "Make it shorter and faster."),
-        ("Cut to the beat", "metronome", "Cut it to the beat of the music."),
-        ("One look", "camera.filters", "Give every shot the Film print look."),
-        ("Clean it up", "sparkles", "Take out repeats and weak shots, and trim long shots."),
+        (L10n.tr("Tighten it"), "scissors", "Make it shorter and faster."),
+        (L10n.tr("Cut to the beat"), "metronome", "Cut it to the beat of the music."),
+        (L10n.tr("One look"), "camera.filters", "Give every shot the Film print look."),
+        (L10n.tr("Clean it up"), "sparkles", "Take out repeats and weak shots, and trim long shots."),
     ]
     static let make: [Idea] = [
-        ("Quick cut", "wand.and.stars", "Make a new quick cut of the best moments, to the beat."),
-        ("30-second highlight", "star", "Make a fast 30 second highlight cut to the beat."),
-        ("Vertical reel", "iphone", "Make a 20 second vertical video, fast."),
-        ("Timelapse", "timer", "Speed every shot up 8x, over the music."),
-        ("Slow and calm", "tortoise", "Make a calm 60 second cut."),
+        (L10n.tr("Quick cut"), "wand.and.stars", "Make a new quick cut of the best moments, to the beat."),
+        (L10n.tr("30-second highlight"), "star", "Make a fast 30 second highlight cut to the beat."),
+        (L10n.tr("Vertical reel"), "iphone", "Make a 20 second vertical video, fast."),
+        (L10n.tr("Timelapse"), "timer", "Speed every shot up 8x, over the music."),
+        (L10n.tr("Slow and calm"), "tortoise", "Make a calm 60 second cut."),
     ]
     static let sound: [Idea] = [
-        ("Even out levels", "slider.horizontal.3", "Make all audio clips the same output level."),
+        (L10n.tr("Even out levels"), "slider.horizontal.3", "Make all audio clips the same output level."),
     ]
     static func sections(hasEdit: Bool) -> [(String, [Idea])] {
-        (hasEdit ? [("Improve", improve)] : []) + [("Create", make), ("Sound", sound)]
+        (hasEdit ? [(L10n.tr("Improve"), improve)] : []) + [(L10n.tr("Create"), make), (L10n.tr("Sound"), sound)]
     }
 }
 
@@ -463,10 +463,10 @@ private struct HistoryMenu: View {
     private func open() {
         let menu = NSMenu()
         menu.autoenablesItems = false
-        menu.addItem(NSMenuItem.sectionHeader(title: "History"))
+        menu.addItem(NSMenuItem.sectionHeader(title: L10n.tr("History")))
         let entries = model.magicHistory
         if entries.isEmpty {
-            menu.addItem(ActionItem("Prompts you send show up here.", enabled: false) {})
+            menu.addItem(ActionItem(L10n.tr("Prompts you send show up here."), enabled: false) {})
         }
         if !entries.isEmpty {
             // In a list of its own that scrolls past the latest few (a menu can't be given a height).
@@ -751,9 +751,9 @@ private struct MentionOption: Identifiable {
             let length = String(format: "%d:%02d", s / 60, s % 60)
             // What kind it is, in words, like the Media list: a length for video, "Audio" and "Photo" said.
             let detail = switch a.kind {
-            case .video: length + "  ·  Video"
-            case .audio: length + "  ·  Audio"
-            case .image: "Photo"
+            case .video: length + "  ·  " + L10n.tr("Video")
+            case .audio: length + "  ·  " + L10n.tr("Audio")
+            case .image: L10n.tr("Photo")
             }
             return MentionOption(id: a.id.uuidString, name: a.name, detail: detail)
         }
@@ -776,11 +776,11 @@ private struct MentionOption: Identifiable {
             ]
             func row(_ l: MagicMention.ClipLabel) -> MentionOption {
                 let kind = switch l.kind {
-                case .video: "Video"
-                case .audio: "Audio"
-                case .image: "Photo"
-                case .solid: "Solid"
-                case .text: "Text"
+                case .video: L10n.tr("Video")
+                case .audio: L10n.tr("Audio")
+                case .image: L10n.tr("Photo")
+                case .solid: L10n.tr("Solid")
+                case .text: L10n.tr("Text")
                 }
                 return MentionOption(id: l.id.uuidString, name: "clip:" + l.name, detail: "\(l.track)  ·  \(clock(l.start))  ·  \(kind)")
             }
@@ -793,7 +793,7 @@ private struct MentionOption: Identifiable {
         // "@marker:" and after: every marker, in time order, narrowed by name.
         let markers = MagicMention.markerLabels(p)
         func mark(_ l: MagicMention.MarkerLabel) -> MentionOption {
-            MentionOption(id: l.id.uuidString, name: "marker:" + l.name, detail: "Marker  ·  \(clock(l.time))", tint: l.tint.hex)
+            MentionOption(id: l.id.uuidString, name: "marker:" + l.name, detail: L10n.fmt("Marker  ·  %@", clock(l.time)), tint: l.tint.hex)
         }
         if q.hasPrefix("marker:") {
             let rest = String(q.dropFirst("marker:".count))
@@ -817,22 +817,22 @@ private struct MentionOption: Identifiable {
         // First the one people point with most; always there, greyed out with nothing selected, so
         // people find out it exists.
         var pointers: [MentionOption] = [selected > 0
-            ? MentionOption(id: "selected", name: "selected", detail: "\(selected) clip\(selected == 1 ? "" : "s")")
-            : MentionOption(id: "selected", name: "selected", detail: "Select clips first", enabled: false)]
+            ? MentionOption(id: "selected", name: "selected", detail: selected == 1 ? L10n.tr("1 clip") : L10n.fmt("%lld clips", selected))
+            : MentionOption(id: "selected", name: "selected", detail: L10n.tr("Select clips first"), enabled: false)]
         pointers.append(MentionOption(id: "playhead", name: "playhead", detail: clock(model.playhead)))
         if let r = p.playRange {
-            pointers.append(MentionOption(id: "in-out", name: "in-out", detail: "\(clock(r.start)) to \(clock(r.end))"))
+            pointers.append(MentionOption(id: "in-out", name: "in-out", detail: L10n.fmt("%@ to %@", clock(r.start), clock(r.end))))
         }
         if !p.assets.isEmpty {
             let n = p.assets.count
-            pointers.append(MentionOption(id: "media", name: "media:", detail: "\(n) file\(n == 1 ? "" : "s")  ›", opensList: true))
+            pointers.append(MentionOption(id: "media", name: "media:", detail: n == 1 ? L10n.tr("1 file  ›") : L10n.fmt("%lld files  ›", n), opensList: true))
         }
         let onTimeline = MagicMention.clipLabels(p).count
         if onTimeline > 0 {
-            pointers.append(MentionOption(id: "clip", name: "clip:", detail: "\(onTimeline) on the timeline  ›", opensList: true))
+            pointers.append(MentionOption(id: "clip", name: "clip:", detail: L10n.fmt("%lld on the timeline  ›", onTimeline), opensList: true))
         }
         if !markers.isEmpty {
-            pointers.append(MentionOption(id: "marker", name: "marker:", detail: "\(markers.count) on the timeline  ›", opensList: true))
+            pointers.append(MentionOption(id: "marker", name: "marker:", detail: L10n.fmt("%lld on the timeline  ›", markers.count), opensList: true))
         }
         let shown = pointers.filter { $0.name.hasPrefix(q) }
         // Typed a few letters: markers and files by name straight away too.
@@ -995,13 +995,13 @@ struct MagicNoteView: View {
                         .frame(width: 18, height: 18)
                         .offset(y: -1.5)
                 }
-                Text(note.agent?.name ?? "Local").font(.system(size: 12, weight: .semibold)).foregroundStyle(Theme.text)
+                Text(note.agent?.name ?? L10n.tr("Local")).font(.system(size: 12, weight: .semibold)).foregroundStyle(Theme.text)
                 if !note.detail.isEmpty {
                     Text(note.detail).font(.system(size: 11)).foregroundStyle(Theme.textFaint)
                 }
             }
             // AIs write links in Markdown ([CC0](https://…)): shown as links you can click.
-            Text((try? AttributedString(markdown: note.text.isEmpty ? "Done." : note.text,
+            Text((try? AttributedString(markdown: note.text.isEmpty ? L10n.tr("Done.") : note.text,
                                         options: .init(interpretedSyntax: .inlineOnlyPreservingWhitespace)))
                  ?? AttributedString(note.text))
                 .tint(Color(hex: 0x8AB4FF))
@@ -1063,20 +1063,20 @@ enum LocalMagic {
             let started = Date()
             return MagicShow.start(model: model, fromMouse: false) { said, changed in
                 if CommandLine.arguments.contains("--magic-local") { logTitles(model) }
-                note(said, changed: changed, detail: ["On this Mac", "\(Int(Date().timeIntervalSince(started).rounded()))s"])
+                note(said, changed: changed, detail: [L10n.tr("On this Mac"), L10n.fmt("%llds", Int(Date().timeIntervalSince(started).rounded()))])
             }
         }
         let state = MagicState.shared
         guard !state.busy, !MagicShow.isRunning else { return }
         state.busy = true
-        state.status = "Reading your request"
+        state.status = L10n.tr("Reading your request")
         // The thinking show (Looking) while Apple's model reads it.
-        MagicThinking.begin(model: model, name: "Local", color: NSColor(white: 0.95, alpha: 1))
+        MagicThinking.begin(model: model, name: L10n.tr("Local"), color: NSColor(white: 0.95, alpha: 1))
         let run = MagicShow.runID
         Task {
             // Pauses in the talking: from what's said (heard on this Mac), not from Apple's reading of the request.
             if LocalSpeech.asks(request) {
-                state.status = "Listening"
+                state.status = L10n.tr("Listening")
                 let p = model.project
                 let found = MagicMention.find(in: typed, media: p.assets, clips: MagicMention.clipLabels(p))
                 var only = Set(found.compactMap { m -> UUID? in if case .clip(let id) = m.mention { return id } else { return nil } })
@@ -1110,7 +1110,7 @@ enum LocalMagic {
             let parts = LocalCombined.parts(request, project: model.project)
             if parts.count > 1 {
                 let outcome = await LocalCombined.plan(parts, request: request, typed: typed, pointers: pointers, model: model) {
-                    state.status = "Listening"
+                    state.status = L10n.tr("Listening")
                 }
                 guard run == MagicShow.runID else { return }
                 state.busy = false
@@ -1125,7 +1125,7 @@ enum LocalMagic {
             if LocalCaptions.asks(request, project: model.project) {
                 let p = model.project
                 if !LocalCaptions.removes(request) {
-                    state.status = "Listening"
+                    state.status = L10n.tr("Listening")
                     for c in p.clips where LocalCaptions.targets(pointers: pointers, project: p).contains(c.id) {
                         if let id = c.assetID, let url = model.media.soundURL(id) { _ = await Transcripts.shared.ready(url, limit: 60) }
                         guard run == MagicShow.runID else { return }
@@ -1240,7 +1240,7 @@ enum LocalMagic {
                 state.status = nil
                 MagicThinking.current?.end()
                 let a = EditroomAlert()
-                a.messageText = "Local couldn't read that"
+                a.messageText = L10n.tr("Local couldn't read that")
                 a.informativeText = (error as? LocalBrain.Failure)?.message ?? error.localizedDescription
                 a.runModal()
                 return
@@ -1257,7 +1257,7 @@ enum LocalMagic {
                 }
                 guard let plan = pointedEdit.plan, !plan.tasks.isEmpty else {
                     MagicThinking.current?.end()
-                    MagicAgent.shared.note = MagicAgent.Note(agent: nil, text: pointedEdit.said, changed: false, detail: "On this Mac")
+                    MagicAgent.shared.note = MagicAgent.Note(agent: nil, text: pointedEdit.said, changed: false, detail: L10n.tr("On this Mac"))
                     return
                 }
                 let started = Date()
@@ -1275,27 +1275,24 @@ enum LocalMagic {
                     if CommandLine.arguments.contains("--magic-local") {
                         FileHandle.standardError.write("MAGIC LOCAL said: \(pointedEdit.said)\n".data(using: .utf8)!)
                     }
-                    note(pointedEdit.said, changed: true, detail: ["On this Mac", "\(Int(Date().timeIntervalSince(started).rounded()))s"])
+                    note(pointedEdit.said, changed: true, detail: [L10n.tr("On this Mac"), L10n.fmt("%llds", Int(Date().timeIntervalSince(started).rounded()))])
                 }
                 if !played {
                     model.mutate { q in for task in plan.tasks { task.edit.apply(&q, 1) } }
-                    note(pointedEdit.said, changed: true, detail: ["On this Mac"])
+                    note(pointedEdit.said, changed: true, detail: [L10n.tr("On this Mac")])
                 }
                 return
             }
             // Nothing in it Local can do (and it isn't just "make it better"): say so, edit nothing.
             if recipe.isEmpty, !LocalBrain.isGeneral(request) {
                 MagicThinking.current?.end()
-                let what = recipe.cannotDo.isEmpty ? "that" : recipe.cannotDo
+                let what = recipe.cannotDo.isEmpty ? L10n.tr("that") : recipe.cannotDo
                 // A question (not about the edit): Local only edits, so it says so and leaves the edit alone.
-                let question = request.contains("?") && recipe.cannotDo.isEmpty
-                MagicAgent.shared.note = MagicAgent.Note(agent: nil, text: question ? """
-                    Local only edits your video, so it left it as it was. To ask a question, use Claude or ChatGPT.
-                    """ : """
-                    Local can't do \(what). It can change the length, the pace, the look, the music, the frame shape \
-                    (vertical, square), and which files to use or take out, by name. For anything that needs \
-                    understanding what's in your shots, use Claude or ChatGPT.
-                    """, changed: false, detail: "On this Mac")
+                let question = (request.contains("?") || request.contains("？")) && recipe.cannotDo.isEmpty
+                MagicAgent.shared.note = MagicAgent.Note(agent: nil, text: question
+                    ? L10n.tr("Local only edits your video, so it left it as it was. To ask a question, use Claude or ChatGPT.")
+                    : L10n.fmt("Local can't do %@. It can change the length, the pace, the look, the music, the frame shape (vertical, square), and which files to use or take out, by name. For anything that needs understanding what's in your shots, use Claude or ChatGPT.", what),
+                    changed: false, detail: L10n.tr("On this Mac"))
                 if CommandLine.arguments.contains("--magic-local") {
                     FileHandle.standardError.write("MAGIC LOCAL said: (nothing done) \(what)\n".data(using: .utf8)!)
                 }
@@ -1308,7 +1305,7 @@ enum LocalMagic {
                 Task { @MainActor in
                     var said = said
                     if captions, changed {
-                        state.status = "Listening"
+                        state.status = L10n.tr("Listening")
                         said += (said.isEmpty ? "" : " ") + (await LocalCaptions.addToCut(model: model))
                         state.status = nil
                     }
@@ -1317,7 +1314,7 @@ enum LocalMagic {
                         logTitles(model)
                         FileHandle.standardError.write("MAGIC LOCAL captions \(model.captionBlocks.count)\n".data(using: .utf8)!)
                     }
-                    note(said, changed: changed, detail: ["On this Mac", "\(Int(Date().timeIntervalSince(started).rounded()))s"])
+                    note(said, changed: changed, detail: [L10n.tr("On this Mac"), L10n.fmt("%llds", Int(Date().timeIntervalSince(started).rounded()))])
                 }
             }
         }
@@ -1328,7 +1325,7 @@ enum LocalMagic {
     private static func perform(_ outcome: LocalPointed.Outcome, model: EditorModel, run: Int) async {
         guard let plan = outcome.plan, !plan.tasks.isEmpty else {
             MagicThinking.current?.end()
-            MagicAgent.shared.note = MagicAgent.Note(agent: nil, text: outcome.said, changed: false, detail: "On this Mac")
+            MagicAgent.shared.note = MagicAgent.Note(agent: nil, text: outcome.said, changed: false, detail: L10n.tr("On this Mac"))
             return
         }
         let started = Date()
@@ -1347,11 +1344,11 @@ enum LocalMagic {
                 FileHandle.standardError.write("MAGIC LOCAL said: \(outcome.said)\n".data(using: .utf8)!)
                 logTitles(model)
             }
-            note(outcome.said, changed: true, detail: ["On this Mac", "\(Int(Date().timeIntervalSince(started).rounded()))s"])
+            note(outcome.said, changed: true, detail: [L10n.tr("On this Mac"), L10n.fmt("%llds", Int(Date().timeIntervalSince(started).rounded()))])
         }
         if !played {
             model.mutate { q in for task in plan.tasks { task.edit.apply(&q, 1) } }
-            note(outcome.said, changed: true, detail: ["On this Mac"])
+            note(outcome.said, changed: true, detail: [L10n.tr("On this Mac")])
         }
     }
 

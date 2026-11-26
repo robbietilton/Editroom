@@ -31,7 +31,7 @@ extension RGBA {
 enum AppTheme: String, CaseIterable, Identifiable {
     case auto, dark, grey, amber, light
     var id: Self { self }
-    var name: String { rawValue.prefix(1).uppercased() + rawValue.dropFirst() }
+    var name: String { L10n.tr(rawValue.prefix(1).uppercased() + rawValue.dropFirst()) }
     var isLight: Bool { resolved == .light }
 
     /// The theme it draws with: Auto becomes Light or Dark.
@@ -295,7 +295,7 @@ struct IconButton: View {
         .opacity(enabled ? 1 : 0.35)
         .onHover { hovering = $0 }
         .animation(.easeOut(duration: 0.12), value: hovering)
-        .help(help)
+        .help(L10n.tr(help))
     }
 }
 

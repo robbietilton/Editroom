@@ -22,9 +22,9 @@ final class MagicThinking: NSObject {
         static func < (a: Stage, b: Stage) -> Bool { a.rawValue < b.rawValue }
         var word: String {
             switch self {
-            case .looking: "Looking"
-            case .analyzing: "Analyzing"
-            case .thinking: "Thinking"
+            case .looking: L10n.tr("Looking")
+            case .analyzing: L10n.tr("Analyzing")
+            case .thinking: L10n.tr("Thinking")
             }
         }
     }
@@ -148,7 +148,7 @@ final class MagicThinking: NSObject {
         hint.backgroundColor = NSColor.black.withAlphaComponent(0.7).cgColor
         hint.cornerRadius = 11
         hint.opacity = 0
-        hintText.string = "Press esc to cancel"
+        hintText.string = L10n.tr("Press esc to cancel")
         hintText.font = NSFont.systemFont(ofSize: 11, weight: .medium)
         hintText.fontSize = 11
         hintText.foregroundColor = NSColor.white.withAlphaComponent(0.75).cgColor

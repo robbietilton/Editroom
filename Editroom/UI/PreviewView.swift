@@ -206,7 +206,7 @@ struct TransportBar: View {
     let meters: MeterState
     @Binding var zoom: Double?
 
-    private static let zooms: [(String, Double?)] = [("Fit", nil), ("25%", 0.25), ("50%", 0.5), ("100%", 1), ("200%", 2)]
+    private static var zooms: [(String, Double?)] { [(L10n.tr("Fit"), nil), ("25%", 0.25), ("50%", 0.5), ("100%", 1), ("200%", 2)] }
 
     var body: some View {
         let fps = model.project.fps
@@ -234,7 +234,7 @@ struct TransportBar: View {
                     }
                 } label: {
                     HStack(spacing: 4) {
-                        Text(Self.zooms.first { $0.1 == zoom }?.0 ?? "Fit")
+                        Text(Self.zooms.first { $0.1 == zoom }?.0 ?? L10n.tr("Fit"))
                             .font(.system(size: 11.5, weight: .medium))
                         Image(systemName: "chevron.down").font(.system(size: 7.5, weight: .bold))
                     }
@@ -250,7 +250,7 @@ struct TransportBar: View {
                 .fixedSize()
                 .help("Viewer zoom")
                 IconButton(symbol: model.viewerOnly ? "arrow.down.right.and.arrow.up.left" : "arrow.up.left.and.arrow.down.right",
-                           size: 28, help: model.viewerOnly ? "Exit Full Screen (F or Esc)" : "Full Screen Viewer (F)") {
+                           size: 28, help: model.viewerOnly ? L10n.tr("Exit Full Screen (F or Esc)") : L10n.tr("Full Screen Viewer (F)")) {
                     model.toggleViewerFullScreen()
                 }
             }

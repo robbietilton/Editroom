@@ -6,9 +6,9 @@ enum MagicGradeKey: CaseIterable {
 
     var label: String {
         switch self {
-        case .exposure: return "Exposure"
-        case .contrast: return "Contrast"
-        case .saturation: return "Saturation"
+        case .exposure: return L10n.tr("Exposure")
+        case .contrast: return L10n.tr("Contrast")
+        case .saturation: return L10n.tr("Saturation")
         }
     }
 
@@ -66,22 +66,22 @@ enum MagicEdit {
         switch self {
         case .place(let clips, _):
             switch clips.first?.kind {
-            case .audio: return "Music"
-            case .text: return "Title"
-            default: return "Place"
+            case .audio: return L10n.tr("Music")
+            case .text: return L10n.tr("Title")
+            default: return L10n.tr("Place")
             }
-        case .trimHead, .trimTail: return "Trim"
-        case .move: return "Move"
-        case .blade: return "✂ Cut"
-        case .remove: return "Delete"
-        case .change(_, let label, _): return label
+        case .trimHead, .trimTail: return L10n.tr("Trim")
+        case .move: return L10n.tr("Move")
+        case .blade: return L10n.tr("✂ Cut")
+        case .remove: return L10n.tr("Delete")
+        case .change(_, let label, _): return L10n.tr(label)
         case .type(_, let text):
             let n = Int((Double(text.count) * min(1, max(0, p))).rounded(.down))
             return String(text.prefix(n)) + (n < text.count ? "|" : "")
         case .gain(_, _, let to): return String(format: "%.0f dB", to).replacingOccurrences(of: "-", with: "−")
-        case .fadeIn: return "Fade in"
-        case .fadeOut: return "Fade out"
-        case .look(_, let name): return name
+        case .fadeIn: return L10n.tr("Fade in")
+        case .fadeOut: return L10n.tr("Fade out")
+        case .look(_, let name): return BuiltInLook.displayName(name)
         case .grade(_, let key, _): return key.label
         case .transition(_, let t): return t.kind.label
         }

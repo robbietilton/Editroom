@@ -57,7 +57,7 @@ enum LocalAdd {
             let seen = clips.filter { $0.kind != .audio }
             let use = seen.isEmpty ? clips : seen
             guard let a = use.map(\.start).min(), let b = use.map(\.end).max() else { return nil }
-            return before ? Spot(time: a, label: "before " + what) : Spot(time: b, label: "after " + what)
+            return before ? Spot(time: a, label: L10n.fmt("before %@", what)) : Spot(time: b, label: L10n.fmt("after %@", what))
         }
 
         // Pointed at with @.
@@ -66,13 +66,13 @@ enum LocalAdd {
             switch m {
             case .selected:
                 let picked = p.clips.filter { pointers.selected.contains($0.id) }
-                if let s = around(picked, picked.filter { $0.kind != .audio }.count > 1 ? "the selected clips" : "the selected clip") { return s }
+                if let s = around(picked, L10n.tr("the selected clips")) { return s }
             case .clip(let id):
                 if let c = p.clip(id), let s = around([c], p.name(of: c)) { return s }
             case .marker(let id):
-                if let mk = p.markerList.first(where: { $0.id == id }) { return Spot(time: mk.time, label: "at the marker") }
+                if let mk = p.markerList.first(where: { $0.id == id }) { return Spot(time: mk.time, label: L10n.tr("at the marker")) }
             case .playhead:
-                return Spot(time: pointers.playhead, label: "at the playhead")
+                return Spot(time: pointers.playhead, label: L10n.tr("at the playhead"))
             case .media(let id):
                 // "after @Beach": a file already in the edit, as a place (the other files named are what to add).
                 let lead = ns.substring(to: range.location).lowercased().suffix(16)
@@ -80,13 +80,13 @@ enum LocalAdd {
                 let uses = visual.filter { $0.assetID == id }.sorted { $0.start < $1.start }
                 if let c = before ? uses.first : uses.last, let s = around([c], p.asset(id)?.name ?? "it") { return s }
             case .range:
-                if let r = pointers.range { return before ? Spot(time: r.start, label: "before the marked range") : Spot(time: r.end, label: "after the marked range") }
+                if let r = pointers.range { return before ? Spot(time: r.start, label: L10n.tr("before the marked range")) : Spot(time: r.end, label: L10n.tr("after the marked range")) }
             }
         }
         // "the selected clip" in words.
         if t.contains("selected"), !pointers.selected.isEmpty {
             let picked = p.clips.filter { pointers.selected.contains($0.id) }
-            if let s = around(picked, "the selected clip") { return s }
+            if let s = around(picked, L10n.tr("the selected clip")) { return s }
         }
         // "the third clip", "clip 2", "the last shot".
         let words = t.split { !$0.isLetter && !$0.isNumber }.map(String.init)
@@ -95,29 +95,29 @@ enum LocalAdd {
             if w == "last" { n = shots.count }
             guard let k = n, k >= 1, k <= shots.count else { continue }
             let pointed = t.contains(" after ") || t.contains(" before ") || t.contains(" in front of ")
-            if !pointed { return k == 1 ? Spot(time: first, label: "at the start") : Spot(time: last, label: "at the end") }
-            if let s = around([shots[k - 1]], w == "last" ? "the last clip" : "clip \(k)") { return s }
+            if !pointed { return k == 1 ? Spot(time: first, label: L10n.tr("at the start")) : Spot(time: last, label: L10n.tr("at the end")) }
+            if let s = around([shots[k - 1]], w == "last" ? L10n.tr("the last clip") : L10n.fmt("clip %lld", k)) { return s }
         }
         for (i, w) in words.enumerated() where w == "clip" || w == "shot" {
             guard i + 1 < words.count, let k = Int(words[i + 1]), k >= 1, k <= shots.count, t.contains(" after ") || t.contains(" before ") else { continue }
-            if let s = around([shots[k - 1]], "clip \(k)") { return s }
+            if let s = around([shots[k - 1]], L10n.fmt("clip %lld", k)) { return s }
         }
-        if t.contains("playhead") || t.contains(" here ") { return Spot(time: pointers.playhead, label: "at the playhead") }
+        if t.contains("playhead") || t.contains(" here ") { return Spot(time: pointers.playhead, label: L10n.tr("at the playhead")) }
         // A typed time: "at 0:12", "at 12s".
         if let at = MagicTimes.times(in: request, fps: p.fps).first(where: { typedTime in
             !typedTime.unitOnly || (request as NSString).substring(to: typedTime.range.location).lowercased().hasSuffix("at ")
         }) {
-            return Spot(time: min(max(first, at.seconds), last), label: "at " + MagicMention.clock(at.seconds))
+            return Spot(time: min(max(first, at.seconds), last), label: L10n.fmt("at %@", MagicMention.clock(at.seconds)))
         }
         if [" beginning", " begin", " start", " front", " opening", " open with", " first "].contains(where: { t.contains($0) }) {
-            return Spot(time: first, label: "at the start")
+            return Spot(time: first, label: L10n.tr("at the start"))
         }
-        return Spot(time: last, label: "at the end")
+        return Spot(time: last, label: L10n.tr("at the end"))
     }
 
     static func plan(request: String, typed: String, pointers: MagicPointers, project p: Project) -> LocalPointed.Outcome {
         let visual = p.clips.filter { $0.kind == .video || $0.kind == .image }
-        guard !visual.isEmpty else { return LocalPointed.Outcome(said: "There's no edit on the timeline to add to.") }
+        guard !visual.isEmpty else { return LocalPointed.Outcome(said: L10n.tr("There's no edit on the timeline to add to.")) }
         let spot = spot(request: request, typed: typed, pointers: pointers, project: p)
         let at = p.snapFrame(spot.time)
 
@@ -162,7 +162,7 @@ enum LocalAdd {
             }
             end += d
         }
-        guard !shots.isEmpty else { return LocalPointed.Outcome(said: "Those clips are too short to use.") }
+        guard !shots.isEmpty else { return LocalPointed.Outcome(said: L10n.tr("Those clips are too short to use.")) }
         let added = end - at
 
         var edits: [MagicEdit] = []
@@ -203,8 +203,8 @@ enum LocalAdd {
             placed.append(c)
         }
         let names = placed.compactMap { p.asset($0.assetID)?.name }
-        let list = names.count <= 3 ? names.joined(separator: ", ") : "\(names.count) clips"
-        let said = "Added \(list) \(spot.label), \(String(format: "%.1f", added)) seconds."
+        let list = names.count <= 3 ? names.joined(separator: ", ") : L10n.fmt("%lld clips", names.count)
+        let said = L10n.fmt("Added %@ %@, %.1f seconds.", list, spot.label, added)
         return LocalPointed.Outcome(plan: MCPDraft.plan(base: p, edits: edits), said: said)
     }
 }

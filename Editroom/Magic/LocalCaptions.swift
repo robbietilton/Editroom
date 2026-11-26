@@ -25,14 +25,14 @@ enum LocalCaptions {
     static func addToCut(model: EditorModel) async -> String {
         let p = model.project
         let targets = p.unlocked(p.defaultCaptionTargets)
-        guard !targets.isEmpty else { return "No one talks in the cut, so there are no captions." }
+        guard !targets.isEmpty else { return L10n.tr("No one talks in the cut, so there are no captions.") }
         for c in p.clips where targets.contains(c.id) {
             if let id = c.assetID, let url = model.media.soundURL(id) { _ = await Transcripts.shared.ready(url, limit: 60) }
         }
         model.amendLastStep { $0.addCaptions(targets) }
         let count = model.captionBlocks.count
-        return count == 0 ? "Added a caption track, but no speech was heard in the cut."
-            : "Captioned what's said: \(count) caption\(count == 1 ? "" : "s")."
+        return count == 0 ? L10n.tr("Added a caption track, but no speech was heard in the cut.")
+            : L10n.fmt("Added %lld subtitles from speech.", count)
     }
 
     static func removes(_ request: String) -> Bool {
@@ -50,21 +50,20 @@ enum LocalCaptions {
     static func plan(request: String, pointers: MagicPointers, project p: Project,
                      transcript: (MediaAsset) -> Transcript?) -> LocalPointed.Outcome {
         if removes(request) {
-            guard p.captions != nil else { return LocalPointed.Outcome(said: "There are no captions to remove.") }
+            guard p.captions != nil else { return LocalPointed.Outcome(said: L10n.tr("There are no captions to remove.")) }
             let edits: [MagicEdit] = [.change(nil, "No captions") { $0.removeCaptionTrack() }]
-            return LocalPointed.Outcome(plan: MCPDraft.plan(base: p, edits: edits), said: "Removed the captions.")
+            return LocalPointed.Outcome(plan: MCPDraft.plan(base: p, edits: edits), said: L10n.tr("Removed the captions."))
         }
         let targets = targets(pointers: pointers, project: p)
         guard !targets.isEmpty else {
-            return LocalPointed.Outcome(said: "There's no one talking to caption. Pick a clip with sound and ask again.")
+            return LocalPointed.Outcome(said: L10n.tr("There's no one talking to caption. Pick a clip with sound and ask again."))
         }
         var after = p
         after.addCaptions(targets)
         let count = CaptionLayout.blocks(after, transcript: transcript).count
         let edits: [MagicEdit] = [.change(targets.first, "Captions") { $0.addCaptions(targets) }]
-        let said = count == 0
-            ? "Added a caption track, but no speech was heard in \(targets.count == 1 ? "that clip" : "those clips")."
-            : "Captioned what's said: \(count) caption\(count == 1 ? "" : "s") on the caption track."
+        let said = count == 0 ? L10n.tr("Added a caption track, but no speech was heard in the clips.")
+            : L10n.fmt("Added %lld subtitles from speech.", count)
         return LocalPointed.Outcome(plan: MCPDraft.plan(base: p, edits: edits), said: said)
     }
 }

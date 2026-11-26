@@ -742,11 +742,11 @@ final class EditorModel: ObservableObject {
             // Test launches (`--open`, `--selftest`) don't change what opens next time.
             if !CommandLine.arguments.contains("--selftest"), !CommandLine.arguments.contains("--open") { lastSession = url.path }
         } catch {
-            importError = "Couldn't open \(url.lastPathComponent)."
+            importError = L10n.fmt("Couldn't open %@.", url.lastPathComponent)
         }
     }
 
-    var title: String { fileURL?.deletingPathExtension().lastPathComponent ?? "Untitled" }
+    var title: String { fileURL?.deletingPathExtension().lastPathComponent ?? L10n.tr("Untitled") }
     var canUndo: Bool { !undoStack.isEmpty || liveSnapshot != nil }
     var canRedo: Bool { !redoStack.isEmpty }
 
@@ -981,7 +981,7 @@ final class EditorModel: ObservableObject {
             editingMarker = here.id
             return
         }
-        let m = Marker(time: t, name: "Marker \((project.markers?.count ?? 0) + 1)")
+        let m = Marker(time: t, name: L10n.fmt("Marker %lld", (project.markers?.count ?? 0) + 1))
         mutate { p in p.markers = (p.markers ?? []) + [m] }
     }
 
@@ -1310,7 +1310,7 @@ final class EditorModel: ObservableObject {
         panel.allowsMultipleSelection = true
         panel.canChooseDirectories = true
         panel.allowedContentTypes = Self.importTypes
-        panel.prompt = "Import"
+        panel.prompt = L10n.tr("Import")
         guard panel.runModal() == .OK else { return }
         importFiles(panel.urls)
     }
@@ -1368,13 +1368,14 @@ final class EditorModel: ObservableObject {
             let before = project.folders
             project.pruneFolders(keeping: importingFolders)
             for f in linked where project.folders?.contains(where: { $0.id == f.id }) != true {
-                importError = "There's no media in “\(f.name)”."
+                importError = L10n.fmt("There's no media in “%@”.", f.name)
             }
             if project.folders != before { objectWillChange.send() }
             if !failed.isEmpty {
-                let hint = FFmpeg.binary == nil ? " Install ffmpeg to import formats macOS can't decode." : ""
-                let shown = failed.prefix(8).joined(separator: ", ") + (failed.count > 8 ? " and \(failed.count - 8) more" : "")
-                importError = "Couldn't import " + shown + "." + hint
+                let hint = FFmpeg.binary == nil ? L10n.tr(" Install ffmpeg to import formats macOS can't decode.") : ""
+                let names = failed.prefix(8).joined(separator: ", ")
+                let shown = failed.count > 8 ? L10n.fmt("%@ and %lld more", names, failed.count - 8) : names
+                importError = L10n.fmt("Couldn't import %@.", shown) + hint
             }
             // Brought in by hand (not by an agent, or found in a linked folder): shown where it sits in Media,
             // picked and scrolled to, so it's clear what came in.
@@ -1582,8 +1583,8 @@ final class EditorModel: ObservableObject {
     func locateFolder(_ id: UUID) {
         guard let f = project.folders?.first(where: { $0.id == id }) else { return }
         let panel = NSOpenPanel()
-        panel.message = "Locate the folder “\(f.name)”"
-        panel.prompt = "Locate"
+        panel.message = L10n.fmt("Locate the folder “%@”", f.name)
+        panel.prompt = L10n.tr("Locate")
         panel.canChooseFiles = false
         panel.canChooseDirectories = true
         guard panel.runModal() == .OK, let url = panel.url else { return }
@@ -1623,10 +1624,10 @@ final class EditorModel: ObservableObject {
         project.settingsLocked = true
         if asset.width == project.width, asset.height == project.height, fps == project.fps { return }
         let alert = EditroomAlert()
-        alert.messageText = "Match the sequence to “\(asset.name)”?"
-        alert.informativeText = "\(asset.width) × \(asset.height) · \(InspectorView.fpsLabel(fps))\nThe sequence is currently \(project.width) × \(project.height) · \(InspectorView.fpsLabel(project.fps))."
-        alert.addButton(withTitle: "Match")
-        alert.addButton(withTitle: "Keep Current")
+        alert.messageText = L10n.fmt("Match the sequence to “%@”?", asset.name)
+        alert.informativeText = L10n.fmt("%lld × %lld · %@\nThe sequence is currently %lld × %lld · %@.", asset.width, asset.height, InspectorView.fpsLabel(fps), project.width, project.height, InspectorView.fpsLabel(project.fps))
+        alert.addButton(withTitle: L10n.tr("Match"))
+        alert.addButton(withTitle: L10n.tr("Keep Current"))
         guard alert.runModal() == .alertFirstButtonReturn else { return }
         mutate { p in
             p.width = asset.width
@@ -1724,11 +1725,13 @@ final class EditorModel: ObservableObject {
             let names = project.assets.filter { loose.contains($0.id) }.map(\.name) + folders.map { tree.name($0) }
             let alert = EditroomAlert()
             alert.messageText = names.count == 1
-                ? (folders.isEmpty ? "Delete “\(names[0])”?" : "Delete the folder “\(names[0])”?")
-                : "Delete \(names.count) items?"
-            alert.informativeText = "\(clipCount) clip\(clipCount == 1 ? " on the timeline uses" : "s on the timeline use") \(names.count == 1 ? "it" : "them") and will be deleted too. The files stay on your Mac, and Undo brings everything back."
-            alert.addButton(withTitle: "Delete")
-            alert.addButton(withTitle: "Cancel")
+                ? (folders.isEmpty ? L10n.fmt("Delete “%@”?", names[0]) : L10n.fmt("Delete the folder “%@”?", names[0]))
+                : L10n.fmt("Delete %lld items?", names.count)
+            alert.informativeText = clipCount == 1
+                ? L10n.tr("One clip on the timeline uses the selected media and will be deleted too. The files stay on your Mac, and Undo brings everything back.")
+                : L10n.fmt("%lld clips on the timeline use the selected media and will be deleted too. The files stay on your Mac, and Undo brings everything back.", clipCount)
+            alert.addButton(withTitle: L10n.tr("Delete"))
+            alert.addButton(withTitle: L10n.tr("Cancel"))
             guard alert.runModal() == .alertFirstButtonReturn else { return }
         }
         let importing = importingFolders
@@ -2004,16 +2007,16 @@ final class EditorModel: ObservableObject {
     }
 
     /// Clip › Add Captions, or Remove Captions when the picked clips have them.
-    var captionsMenuTitle: String { !selection.isEmpty && hasCaptions(selection) ? "Remove Captions" : "Add Captions" }
+    var captionsMenuTitle: String { !selection.isEmpty && hasCaptions(selection) ? L10n.tr("Remove Captions") : L10n.tr("Add Captions") }
 
     func captionsFromMenu() {
         if !selection.isEmpty, hasCaptions(selection) { return removeCaptions() }
         guard addCaptions() == 0 else { return }
         let alert = EditroomAlert()
-        alert.messageText = "Nothing to caption"
+        alert.messageText = L10n.tr("Nothing to caption")
         alert.informativeText = selection.isEmpty
-            ? "Captions come from what's said in clips of people talking. Add some to the timeline, or pick a clip with sound."
-            : "The picked clips have no sound to caption."
+            ? L10n.tr("Captions come from what's said in clips of people talking. Add some to the timeline, or pick a clip with sound.")
+            : L10n.tr("The picked clips have no sound to caption.")
         alert.runModal()
     }
 
@@ -2430,10 +2433,10 @@ final class EditorModel: ObservableObject {
             guard !quitting, isDirty, !project.clips.isEmpty else { return true }
             if fileURL != nil { autosaveNow(); return true }
             let alert = EditroomAlert()
-            alert.messageText = "Discard unsaved changes?"
-            alert.informativeText = "Your changes to “\(title)” will be lost."
-            alert.addButton(withTitle: "Discard")
-            alert.addButton(withTitle: "Cancel")
+            alert.messageText = L10n.tr("Discard unsaved changes?")
+            alert.informativeText = L10n.fmt("Your changes to “%@” will be lost.", title)
+            alert.addButton(withTitle: L10n.tr("Discard"))
+            alert.addButton(withTitle: L10n.tr("Cancel"))
             guard alert.runModal() == .alertFirstButtonReturn else { return false }
             dropUnsaved()
             return true
@@ -2441,11 +2444,11 @@ final class EditorModel: ObservableObject {
         commitLive()
         guard isDirty, !(project.clips.isEmpty && project.assets.isEmpty) else { return true }
         let alert = EditroomAlert()
-        alert.messageText = "Save changes to “\(title)”?"
-        alert.informativeText = "Your changes will be lost if you don't save them."
-        alert.addButton(withTitle: "Save")
-        alert.addButton(withTitle: "Cancel")
-        let dont = alert.addButton(withTitle: "Don't Save")
+        alert.messageText = L10n.fmt("Save changes to “%@”?", title)
+        alert.informativeText = L10n.tr("Your changes will be lost if you don't save them.")
+        alert.addButton(withTitle: L10n.tr("Save"))
+        alert.addButton(withTitle: L10n.tr("Cancel"))
+        let dont = alert.addButton(withTitle: L10n.tr("Don't Save"))
         dont.keyEquivalent = "d"
         dont.keyEquivalentModifierMask = .command
         switch alert.runModal() {
@@ -2497,7 +2500,7 @@ final class EditorModel: ObservableObject {
 
     func openRecent(_ url: URL) {
         guard FileManager.default.fileExists(atPath: url.path) else {
-            importError = "“\(url.lastPathComponent)” can't be found. It may have been moved or deleted."
+            importError = L10n.fmt("“%@” can't be found. It may have been moved or deleted.", url.lastPathComponent)
             return
         }
         guard confirmDiscard() else { return }
@@ -2552,7 +2555,7 @@ final class EditorModel: ObservableObject {
             isDirty = false
             lastSession = url.path
         } catch {
-            importError = "Couldn't save to \(url.lastPathComponent)."
+            importError = L10n.fmt("Couldn't save to %@.", url.lastPathComponent)
         }
     }
 
@@ -2701,8 +2704,8 @@ final class EditorModel: ObservableObject {
         guard let asset = project.assets.first(where: { $0.id == id }) else { return }
         let original = URL(fileURLWithPath: asset.path)
         let panel = NSOpenPanel()
-        panel.message = "Locate “\(original.lastPathComponent)”"
-        panel.prompt = "Locate"
+        panel.message = L10n.fmt("Locate “%@”", original.lastPathComponent)
+        panel.prompt = L10n.tr("Locate")
         panel.allowedContentTypes = Self.importTypes
         panel.allowsOtherFileTypes = true
         panel.nameFieldStringValue = original.lastPathComponent
@@ -2711,7 +2714,7 @@ final class EditorModel: ObservableObject {
             if await relink(id, to: url) {
                 if thenOthers, let next = missingAssets.first { locate(next.id, thenOthers: true) }
             } else {
-                importError = "“\(url.lastPathComponent)” can't be used in place of “\(original.lastPathComponent)”."
+                importError = L10n.fmt("“%@” can't be used in place of “%@”.", url.lastPathComponent, original.lastPathComponent)
             }
         }
     }
@@ -2723,20 +2726,22 @@ final class EditorModel: ObservableObject {
         if let f = project.folders?.first(where: { f in !MediaFolder.isFolder(f.path) && missing.contains { MediaFolder.contains(f.path, $0.path) } }) {
             let n = missing.filter { MediaFolder.contains(f.path, $0.path) }.count
             let alert = EditroomAlert()
-            alert.messageText = "The folder “\(f.name)” is missing"
-            alert.informativeText = "\(n) item\(n == 1 ? " in it can't" : "s in it can't") be found. Locate the folder and everything in it is found again."
-            alert.addButton(withTitle: "Locate…")
-            alert.addButton(withTitle: "Not Now")
+            alert.messageText = L10n.fmt("The folder “%@” is missing", f.name)
+            alert.informativeText = n == 1
+                ? L10n.tr("One item in it can't be found. Locate the folder to find it again.")
+                : L10n.fmt("%lld items in it can't be found. Locate the folder to find them again.", n)
+            alert.addButton(withTitle: L10n.tr("Locate…"))
+            alert.addButton(withTitle: L10n.tr("Not Now"))
             if alert.runModal() == .alertFirstButtonReturn { locateFolder(f.id) }
             return
         }
         let names = missing.prefix(6).map { URL(fileURLWithPath: $0.path).lastPathComponent }
         let alert = EditroomAlert()
-        alert.messageText = missing.count == 1 ? "1 media file is missing" : "\(missing.count) media files are missing"
+        alert.messageText = missing.count == 1 ? L10n.tr("1 media file is missing") : L10n.fmt("%lld media files are missing", missing.count)
         alert.informativeText = names.joined(separator: "\n") + (missing.count > names.count ? "\n…" : "")
-            + "\n\nLocate one and any others in the same folder are found too."
-        alert.addButton(withTitle: "Locate…")
-        alert.addButton(withTitle: "Not Now")
+            + L10n.tr("\n\nLocate one and any others in the same folder are found too.")
+        alert.addButton(withTitle: L10n.tr("Locate…"))
+        alert.addButton(withTitle: L10n.tr("Not Now"))
         if alert.runModal() == .alertFirstButtonReturn { locate(first.id, thenOthers: true) }
     }
 }

@@ -23,7 +23,7 @@ enum LocalZoom {
             if let top = order.lazy.compactMap({ id in under.first { $0.trackID == id } }).first { targets = [top] }
         }
         guard !targets.isEmpty else {
-            return LocalPointed.Outcome(said: "Select a clip, or put the playhead on one, to zoom.")
+            return LocalPointed.Outcome(said: L10n.tr("Select a clip, or put the playhead on one, to zoom."))
         }
 
         let off = [" remove", " take off", " turn off", " no zoom", " without zoom", " stop zoom", " get rid of", " undo the zoom"].contains { t.contains($0) }
@@ -51,13 +51,18 @@ enum LocalZoom {
             })
         }
         let n = targets.count
-        let shots = n == 1 ? "the shot" : "\(n) shots"
+        let shots = n == 1 ? L10n.tr("the shot") : L10n.fmt("%lld shots", n)
         let said: String
         if off {
-            said = "Took the zoom off \(shots)."
+            said = L10n.fmt("Removed zoom from %@.", shots)
         } else {
-            let how = mode == .zoomIn ? "Zooms in on" : mode == .zoomOut ? "Zooms out of" : "Zooms in and back out on"
-            said = "\(how) \(shots)\(even ? " at a steady pace" : ""). Change it with the zoom button on Scale."
+            let how = switch mode {
+            case .zoomIn: L10n.fmt("Zooms in on %@.", shots)
+            case .zoomOut: L10n.fmt("Zooms out of %@.", shots)
+            case .inOut: L10n.fmt("Zooms in and back out on %@.", shots)
+            }
+            let pace = even ? " " + L10n.tr("Moves at a steady pace.") : ""
+            said = how + pace + " " + L10n.tr("Change it with the zoom button on Scale.")
         }
         return LocalPointed.Outcome(plan: MCPDraft.plan(base: p, edits: edits), said: said)
     }

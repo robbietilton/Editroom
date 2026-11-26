@@ -172,7 +172,7 @@ struct LibraryView: View {
                             }
                         }
                         if shown.isEmpty && folders.isEmpty && (model.incomingFiles.isEmpty || searching) {
-                            Text(search.contains("\"") || search.contains("“") ? "Nothing says \(search)" : "No media matches “\(search)”")
+                            Text(search.contains("\"") || search.contains("“") ? L10n.fmt("Nothing says %@", search) : L10n.fmt("No media matches “%@”", search))
                                 .font(.system(size: 11.5))
                                 .foregroundStyle(Theme.textFaint)
                                 .frame(maxWidth: .infinity)
@@ -265,8 +265,8 @@ private struct SearchField: View {
             Image(systemName: saying ? "text.bubble" : "magnifyingglass")
                 .font(.system(size: 10.5, weight: .medium))
                 .foregroundStyle(saying ? Theme.text : Theme.textFaint)
-                .help(saying ? "Searching what's said in your clips" : "")
-            TextField(prompt, text: $text)
+                .help(saying ? L10n.tr("Searching what's said in your clips") : "")
+            TextField(L10n.tr(prompt), text: $text)
                 .textFieldStyle(.plain)
                 .font(.system(size: 11.5))
                 .foregroundStyle(Theme.text)
@@ -396,7 +396,7 @@ private struct AddButton: View {
                 model.dragPayload = payload
                 return NSItemProvider(object: ("editroom:" + (payload == .text ? "text" : "solid")) as NSString)
             }
-            .help(help)
+            .help(L10n.tr(help))
     }
 }
 
@@ -434,14 +434,14 @@ private struct AssetActions: ViewModifier {
                 if !offline {
                     // Normally automatic (when Editroom comes back to the front); this is for being sure.
                     let ids = picked && pickedCount > 1 ? model.mediaSelection : [asset.id]
-                    Button(ids.count > 1 ? "Reload \(ids.count) Items from Disk" : "Reload from Disk") {
+                    Button(ids.count > 1 ? L10n.fmt("Reload %lld Items from Disk", ids.count) : L10n.tr("Reload from Disk")) {
                         Task { await model.reloadMedia(ids) }
                     }
                 }
                 Divider()
                 // The picked items when this is one of them; otherwise just this one.
                 if picked, pickedCount > 1 {
-                    Button("Delete \(pickedCount) Items") { model.deleteSelected() }
+                    Button(L10n.fmt("Delete %lld Items", pickedCount)) { model.deleteSelected() }
                 } else {
                     Button("Delete") { model.removeAssets([asset.id]) }
                 }
@@ -473,8 +473,8 @@ private struct AssetRow: View {
     private var detail: String {
         switch asset.kind {
         case .video: Timecode.short(asset.duration)
-        case .audio: Timecode.short(asset.duration) + "  ·  Audio"
-        case .image: "Photo"
+        case .audio: Timecode.short(asset.duration) + "  ·  " + L10n.tr("Audio")
+        case .image: L10n.tr("Photo")
         }
     }
 
@@ -483,8 +483,8 @@ private struct AssetRow: View {
         var parts = [asset.name]
         if asset.kind != .image { parts.append(Timecode.short(asset.duration)) }
         if asset.width > 0 { parts.append("\(asset.width)×\(asset.height)") }
-        if asset.kind == .video, asset.fps > 0 { parts.append(String(format: "%g fps", (asset.fps * 100).rounded() / 100)) }
-        if asset.kind == .audio { parts.append("Audio") }
+        if asset.kind == .video, asset.fps > 0 { parts.append(InspectorView.fpsLabel(asset.fps)) }
+        if asset.kind == .audio { parts.append(L10n.tr("Audio")) }
         return parts.joined(separator: " · ")
     }
 
@@ -527,7 +527,7 @@ enum MediaLayout: String, CaseIterable, Identifiable {
     case thumbnails, list
     static let key = "mediaLayout"
     var id: String { rawValue }
-    var name: String { self == .list ? "List" : "Thumbnails" }
+    var name: String { self == .list ? L10n.tr("List") : L10n.tr("Thumbnails") }
 }
 
 /// A Media item as a larger picture, its name underneath: the Thumbnails layout.
@@ -639,13 +639,14 @@ private struct FolderActions: ViewModifier {
                 Divider()
                 // The picked folders and items when this is one of them; otherwise just this folder.
                 if picked, pickedCount > 1 {
-                    Button("Delete \(pickedCount) Items") { model.deleteSelected() }
+                    Button(L10n.fmt("Delete %lld Items", pickedCount)) { model.deleteSelected() }
                 } else {
                     Button("Delete Folder") { model.removeFolder(folder) }
                 }
             }
-            .help(missing ? "\(tree.name(folder)) can't be found. Right-click to locate it."
-                  : "\(tree.name(folder)) · \(tree.count(under: folder)) item\(tree.count(under: folder) == 1 ? "" : "s"). Double-click to open; it follows the folder on your Mac.")
+            .help(missing ? L10n.fmt("%@ can't be found. Right-click to locate it.", tree.name(folder))
+                          : L10n.fmt("%@ · %lld items. Double-click to open. Changes in Finder are reflected here.",
+                                     tree.name(folder), tree.count(under: folder)))
     }
 
     private func open() {
@@ -743,7 +744,7 @@ private struct FolderRow: View {
                     .foregroundStyle(hovering || picked ? Theme.text : Theme.textDim)
                     .lineLimit(1)
                     .truncationMode(.middle)
-                Text(missing ? "Missing" : "\(n) item\(n == 1 ? "" : "s")")
+                Text(missing ? L10n.tr("Missing") : L10n.fmt("%lld items", n))
                     .font(Theme.mono(10))
                     .foregroundStyle(Theme.textFaint)
             }
@@ -787,7 +788,7 @@ private struct MediaTitle: View {
             .padding(.leading, -6)
             .onHover { hoveringBack = $0 }
             .animation(.easeOut(duration: 0.12), value: hoveringBack)
-            .help(up.map { "Back to \(tree.name($0))" } ?? "Back to Media")
+            .help(up.map { L10n.fmt("Back to %@", tree.name($0)) } ?? L10n.tr("Back to Media"))
             Text(tree.name(folder).uppercased())
                 .font(Theme.label())
                 .kerning(1.6)
@@ -911,7 +912,7 @@ private struct IncomingActions: ViewModifier {
     func body(content: Content) -> some View {
         content.contextMenu {
             let ids = model.incomingSelection.contains(id) ? model.incomingSelection : [id]
-            Button(ids.count > 1 ? "Cancel \(ids.count) Imports" : "Cancel Import") { model.cancelIncoming(ids) }
+        Button(ids.count > 1 ? L10n.fmt("Cancel %lld Imports", ids.count) : L10n.tr("Cancel Import")) { model.cancelIncoming(ids) }
         }
     }
 }

@@ -43,7 +43,7 @@ enum LocalTitle {
     static func plan(request: String, playhead: Double, project p: Project) -> LocalPointed.Outcome {
         let edit = p.clips.filter { $0.kind == .video || $0.kind == .image }
         guard let first = edit.map(\.start).min(), let last = edit.map(\.end).max() else {
-            return LocalPointed.Outcome(said: "There's no edit on the timeline to put a title on.")
+            return LocalPointed.Outcome(said: L10n.tr("There's no edit on the timeline to put a title on."))
         }
         let where_ = spot(request, fps: p.fps)
         let length = min(3, max(1, (last - first) * 0.25))
@@ -78,11 +78,11 @@ enum LocalTitle {
         clip.text.size = 130
         edits += [.place([clip], asset: nil), .type(clip.id, words), .fadeIn(clip.id, to: 0.4), .fadeOut(clip.id, to: 0.5)]
         let place: String = switch where_ {
-        case .end: "over the last \(Int(length.rounded())) seconds"
-        case .start: "at the start"
-        case .playhead: "at the playhead"
-        case .at: "at " + MagicMention.clock(start)
+        case .end: L10n.fmt("over the last %lld seconds", Int(length.rounded()))
+        case .start: L10n.tr("at the start")
+        case .playhead: L10n.tr("at the playhead")
+        case .at: L10n.fmt("at %@", MagicMention.clock(start))
         }
-        return LocalPointed.Outcome(plan: MCPDraft.plan(base: p, edits: edits), said: "Added a title, \u{201C}\(words)\u{201D}, \(place).")
+        return LocalPointed.Outcome(plan: MCPDraft.plan(base: p, edits: edits), said: L10n.fmt("Added the title “%@” %@.", words, place))
     }
 }

@@ -160,19 +160,20 @@ final class MagicShow: NSObject {
     static func madeNote(_ d: EditDecision, length: Double, recipe: LocalRecipe) -> String {
         var names: [String] = []
         for s in d.shots where !names.contains(s.asset.name) { names.append(s.asset.name) }
-        let of = recipe.asked.isEmpty ? "" : " of " + (recipe.asked.hasPrefix("the ") ? "" : "the ") + recipe.asked
+        let of = recipe.asked.isEmpty ? "" : L10n.fmt(" of %@", recipe.asked)
         let n = d.shots.count
-        let clips = n == 1 ? "1 clip" : "\(n) clips"
+        let clips = n == 1 ? L10n.tr("1 clip") : L10n.fmt("%lld clips", n)
         let from: String
         if names.count == 1 {
-            from = " from \(names[0])"
+            from = L10n.fmt(" from %@", names[0])
         } else if names.count <= 3 || ((!recipe.asked.isEmpty || !recipe.keepOnly.isEmpty) && names.count <= 5) {
-            from = " from " + names.dropLast().joined(separator: ", ") + " and " + names.last!
+            from = L10n.fmt(" from %@ and %@", names.dropLast().joined(separator: ", "), names.last!)
         } else {
-            let videos = d.shots.allSatisfy { $0.asset.kind == .video } ? "videos" : "files"
-            from = " from \(names.count) \(videos) in your Media"
+            from = d.shots.allSatisfy { $0.asset.kind == .video }
+                ? L10n.fmt(" from %lld videos in your Media", names.count)
+                : L10n.fmt(" from %lld files in your Media", names.count)
         }
-        return String(format: "Made a %.0f-second cut", length) + of + ": " + clips + from + (d.music == nil ? "" : ", cut to the beat") + "."
+        return L10n.fmt("Made a %.0f-second cut", length) + of + L10n.tr(": ") + clips + from + (d.music == nil ? "" : L10n.tr(", cut to the beat")) + L10n.tr(".")
     }
 
     /// Looks at the media, plans a cut, and plays it. `fromMouse` spawns the cursors from where the
@@ -198,7 +199,13 @@ final class MagicShow: NSObject {
         }
         guard !visuals.isEmpty else {
             if let done, recipe.isFocused {
-                done("\(recipe.mediaNames.joined(separator: ", ")) \(recipe.mediaNames.count == 1 ? "isn't" : "aren't") in your \(improving ? "edit" : "Media"), so there was nothing to keep.", false)
+                done(recipe.mediaNames.count == 1
+                    ? (improving
+                        ? L10n.fmt("%@ isn't in your edit, so there was nothing to keep.", recipe.mediaNames[0])
+                        : L10n.fmt("%@ isn't in your Media, so there was nothing to keep.", recipe.mediaNames[0]))
+                    : (improving
+                        ? L10n.fmt("%@ aren't in your edit, so there was nothing to keep.", recipe.mediaNames.joined(separator: ", "))
+                        : L10n.fmt("%@ aren't in your Media, so there was nothing to keep.", recipe.mediaNames.joined(separator: ", "))), false)
             } else {
                 NSSound.beep()
             }
@@ -218,7 +225,7 @@ final class MagicShow: NSObject {
         state.busy = true
         state.status = nil
         // The thinking show while it studies the clips (one already running, for a request being read, carries on).
-        let thinking = MagicThinking.current ?? MagicThinking.begin(model: model, name: "Local", color: NSColor(white: 0.95, alpha: 1))
+        let thinking = MagicThinking.current ?? MagicThinking.begin(model: model, name: L10n.tr("Local"), color: NSColor(white: 0.95, alpha: 1))
         thinking?.look()
         let visualIDs = Set(visuals.map(\.id))
         let run = runID
@@ -265,7 +272,7 @@ final class MagicShow: NSObject {
             MagicThinking.current?.analyze(assets: visualIDs)
             let found = await analyze(visuals, song: song) { done, total in
                 guard run == runID else { return }
-                state.status = done < total ? "Analyzing \(done) of \(total)" : nil
+                state.status = done < total ? L10n.fmt("Analyzing %lld of %lld", done, total) : nil
             }
             // Stopped meanwhile: nothing to do.
             guard run == runID else { return }
@@ -281,8 +288,8 @@ final class MagicShow: NSObject {
                 said = outcome.map { o in
                     if let message = o.message { return message }
                     // "Kept only IMG_1607 (2 shots out); everything else off the timeline." for a focused request.
-                    return o.focused ? o.summary.prefix(1).uppercased() + o.summary.dropFirst() + "." : "Improved your edit: \(o.summary)."
-                } ?? "Your edit already looks good; nothing to change."
+                    return o.focused ? o.summary.prefix(1).uppercased() + o.summary.dropFirst() + L10n.tr(".") : L10n.fmt("Improved your edit: %@.", o.summary)
+                } ?? L10n.tr("Your edit already looks good; nothing to change.")
                 if outcome?.message == nil { notes += outcome?.notes ?? [] }
                 if CommandLine.arguments.contains("--magic") {
                     FileHandle.standardError.write("MAGIC IMPROVE \(outcome?.summary ?? "nothing to change") (\(outcome?.plan.tasks.count ?? 0) edits) recipe: \(recipe.summary)\n".data(using: .utf8)!)
@@ -293,12 +300,12 @@ final class MagicShow: NSObject {
                 if let decision {
                     let length = decision.shots.reduce(0) { $0 + $1.duration }
                     said = Self.madeNote(decision, length: length, recipe: recipe)
-                    if let s = recipe.seconds, length < s - 1 { notes.append("your Media only had enough good footage for about \(Int(length.rounded())) seconds") }
+                    if let s = recipe.seconds, length < s - 1 { notes.append(L10n.fmt("your Media only had enough good footage for about %lld seconds", Int(length.rounded()))) }
                     if recipe.every {
                         let used = Set(decision.shots.map(\.asset.id)).count
-                        if used < found.clips.count { notes.append("\(found.clips.count - used) of your clips were too short to use") }
+                        if used < found.clips.count { notes.append(L10n.fmt("%lld of your clips were too short to use", found.clips.count - used)) }
                         if let s = recipe.seconds, length > s + 0.5 {
-                            notes.append(String(format: "fitting every clip in made it %.0f seconds", length))
+                            notes.append(L10n.fmt("fitting every clip in made it %.0f seconds", length))
                         }
                     }
                     if CommandLine.arguments.contains("--magic-local") {
@@ -321,12 +328,12 @@ final class MagicShow: NSObject {
                     log(decision, found.music?.1, seconds: CACurrentMediaTime() - started)
                 }
             }
-            if !notes.isEmpty { said += " It couldn't do everything you asked: " + notes.joined(separator: "; ") + "." }
+            if !notes.isEmpty { said += " " + L10n.fmt("It couldn't do everything you asked: %@.", notes.joined(separator: "; ")) }
             guard let plan, current == nil, let canvas = TimelineCanvas.current, let window = canvas.window else {
                 state.busy = false
                 state.status = nil
                 MagicThinking.current?.end()
-                if let done, plan == nil { done(said.isEmpty ? "Magic couldn't find anything to make a cut from." : said, false) } else { NSSound.beep() }
+                if let done, plan == nil { done(said.isEmpty ? L10n.tr("Magic couldn't find anything to make a cut from.") : said, false) } else { NSSound.beep() }
                 return
             }
             // Spawn from the click if it was quick; after a wait (or after the thinking show), from the button.
@@ -539,7 +546,7 @@ final class MagicShow: NSObject {
     private var startPPS: CGFloat = 1
     /// Where a transition menu's Dissolve item is, from where the menu was opened.
     static let menuItem = CGPoint(x: 62, y: 20)
-    static let menuItems = ["Dissolve", "Dip to Black", "Wipe"]
+    static let menuItems = TransitionKind.allCases.map(\.label)
 
     private let performer: Performer?
     private var agentMode: Bool { performer != nil }
@@ -576,7 +583,7 @@ final class MagicShow: NSObject {
     // MARK: Setup
 
     private func begin() {
-        if !agentMode { MagicState.shared.stage = "Editing" }
+        if !agentMode { MagicState.shared.stage = L10n.tr("Editing") }
         model.pause()
         model.selection = []
         model.rebuildSuspended = true
@@ -820,7 +827,7 @@ final class MagicShow: NSObject {
 
         backdrop.backgroundColor = Theme.NS.panel.cgColor
         backdrop.opacity = 0
-        for (layer, text, x, size, color) in [(backdropTitle, "Grade", 16.0, 13.0, Theme.NS.text), (backdropCount, "", 0.0, 11.0, Theme.NS.textDim)] {
+        for (layer, text, x, size, color) in [(backdropTitle, L10n.tr("Grade"), 16.0, 13.0, Theme.NS.text), (backdropCount, "", 0.0, 11.0, Theme.NS.textDim)] {
             layer.contentsScale = scale
             layer.string = text
             layer.font = NSFont.systemFont(ofSize: size, weight: x > 0 ? .semibold : .medium)
@@ -917,13 +924,13 @@ final class MagicShow: NSObject {
             return t
         }
 
-        let name = finalProject.clip(c.clip).map { finalProject.name(of: $0) } ?? "Clip"
+        let name = finalProject.clip(c.clip).map { finalProject.displayName(of: $0) } ?? L10n.tr("Clip")
         c.title.contentsScale = scale
-        _ = text("GRADE", CGRect(x: 10, y: 8, width: 44, height: 12), size: 9, weight: .bold, color: Theme.NS.textFaint)
+        _ = text(L10n.tr("GRADE"), CGRect(x: 10, y: 8, width: 44, height: 12), size: 9, weight: .bold, color: Theme.NS.textFaint)
         let t = text(name, CGRect(x: 52, y: 7, width: size.width - 62, height: 13), size: 10.5, weight: .semibold, color: Theme.NS.text)
         t.truncationMode = .middle
 
-        _ = text("Look", CGRect(x: 10, y: 27, width: 56, height: 13))
+        _ = text(L10n.tr("Look"), CGRect(x: 10, y: 27, width: 56, height: 13))
         c.chip.frame = CGRect(x: Self.trackX - 6, y: 24, width: size.width - Self.trackX - 4, height: 18)
         c.chip.cornerRadius = 5
         c.chip.backgroundColor = NSColor(hex: 0x232323).cgColor
@@ -936,7 +943,7 @@ final class MagicShow: NSObject {
         c.chipText.foregroundColor = Theme.NS.textDim.cgColor
         c.chipText.frame = CGRect(x: 8, y: 2.5, width: c.chip.frame.width - 16, height: 13)
         let before = plan.base.clip(c.clip)?.grade
-        c.chipText.string = before?.look == nil ? "None" : before!.lookLabel
+        c.chipText.string = before?.look == nil ? L10n.tr("None") : before!.localizedLookLabel
         c.chip.addSublayer(c.chipText)
 
         for (i, key) in MagicGradeKey.allCases.enumerated() {
@@ -1429,8 +1436,8 @@ final class MagicShow: NSObject {
                 case .look(_, let name):
                     let picked = t >= s.end
                     let was = plan.base.clip(c.clip)?.grade
-                    c.chipText.string = picked ? (BuiltInLook.named(name) != nil ? name : URL(fileURLWithPath: name).deletingPathExtension().lastPathComponent)
-                        : (was?.look == nil ? "None" : was!.lookLabel)
+                    c.chipText.string = picked ? BuiltInLook.displayName(name)
+                        : (was?.look == nil ? L10n.tr("None") : was!.localizedLookLabel)
                     c.chipText.foregroundColor = (picked ? Theme.NS.text : Theme.NS.textDim).cgColor
                     c.chip.borderColor = (t >= s.start && t < s.end + 0.1 ? NSColor.white.withAlphaComponent(0.5) : NSColor(white: 1, alpha: 0.08)).cgColor
                 case .grade(_, let key, let to):
@@ -1523,7 +1530,7 @@ final class MagicShow: NSObject {
         guard u > 0 else { return }
         backdrop.frame = inspectorRect
         let active = cards.values.filter { t >= $0.appear && t < $0.vanish }.count
-        backdropCount.string = active == 0 ? "" : "\(active) clip\(active == 1 ? "" : "s")"
+        backdropCount.string = active == 0 ? "" : (active == 1 ? L10n.tr("1 clip") : L10n.fmt("%lld clips", active))
     }
 
     /// A gentle curve between two points; the first trip fans out from where the cursors appeared.

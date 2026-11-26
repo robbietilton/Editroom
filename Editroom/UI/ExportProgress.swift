@@ -51,7 +51,7 @@ struct ExportProgressPill: View {
     private func status(_ item: ExportQueue.Item) -> String {
         let pct = "\(Int(queue.progress * 100))%"
         guard let left = queue.timeLeft else { return pct }
-        return pct + "  ·  " + Timecode.short(left) + " left"
+        return L10n.fmt("%@  ·  %@ left", pct, Timecode.short(left))
     }
 }
 
@@ -112,10 +112,10 @@ private struct ExportList: View {
         let kind = s.format == .wav ? "WAV" : "\(s.codec.rawValue) · \(Int(s.renderSize(for: item.project).height))p"
         switch item.status {
         case .running: return kind + " · \(Int(queue.progress * 100))%"
-        case .waiting: return kind + " · waiting"
-        case .done: return kind + " · done"
+        case .waiting: return L10n.fmt("%@ · waiting", kind)
+        case .done: return L10n.fmt("%@ · done", kind)
         case .failed(let m): return m
-        case .cancelled: return kind + " · cancelled"
+        case .cancelled: return L10n.fmt("%@ · cancelled", kind)
         }
     }
 }
