@@ -170,9 +170,12 @@ final class MediaStore: ObservableObject {
         for var a in assets where runtimes[a.id] == nil {
             if a.kind == .image { loadStill(a); continue }
             defer { opened(a.id) }
-            if let playable = a.playablePath, !FileManager.default.fileExists(atPath: playable),
-               FileManager.default.fileExists(atPath: a.path),
-               let again = await FFmpeg.makePlayable(URL(fileURLWithPath: a.path)) {
+            // Its playable copy gone, or made before sound macOS can't play was converted too (DTS, Vorbis): made again.
+            var stale = false
+            if let playable = a.playablePath, FileManager.default.fileExists(atPath: a.path) {
+                stale = FileManager.default.fileExists(atPath: playable) ? !(await FFmpeg.soundPlays(URL(fileURLWithPath: playable))) : true
+            }
+            if stale, let again = await FFmpeg.makePlayable(URL(fileURLWithPath: a.path)) {
                 a.playablePath = again.path
                 reconverted[a.id] = again.path
             }
@@ -714,11 +717,20 @@ enum FFmpeg {
         let base = url.deletingPathExtension().lastPathComponent + "-" + String(hash, radix: 36)
         let out = cacheDir.appendingPathComponent(base + ".mov")
 
-        // 1. Stream copy into a QuickTime container (instant for H.264/HEVC/AAC inside MKV etc).
-        if await run(bin, ["-y", "-i", url.path, "-map", "0:v:0?", "-map", "0:a:0?", "-c", "copy", "-tag:v", "hvc1", out.path]),
-           await MediaStore.probe(out) != nil { return out }
-        if await run(bin, ["-y", "-i", url.path, "-map", "0:v:0?", "-map", "0:a:0?", "-c", "copy", out.path]),
-           await MediaStore.probe(out) != nil { return out }
+        // 1. Stream copy into a QuickTime container (instant for H.264/HEVC/AAC inside MKV etc). Some sound copies in
+        // but macOS can't play it (DTS, Vorbis): the picture is copied and the sound made AAC instead.
+        for tag in [["-tag:v", "hvc1"], []] {
+            guard await run(bin, ["-y", "-i", url.path, "-map", "0:v:0?", "-map", "0:a:0?", "-c", "copy"] + tag + [out.path]),
+                  await MediaStore.probe(out) != nil else { continue }
+            if await soundPlays(out) { return out }
+            if await run(bin, ["-y", "-i", url.path, "-map", "0:v:0?", "-map", "0:a:0?", "-c:v", "copy"] + tag
+                                + ["-c:a", "aac", "-b:a", "256k", out.path]),
+               await MediaStore.probe(out) != nil, await soundPlays(out) { return out }
+            // Sound neither macOS nor Editroom's ffmpeg can read: the picture, as copied, rather than nothing.
+            if await run(bin, ["-y", "-i", url.path, "-map", "0:v:0?", "-map", "0:a:0?", "-c", "copy"] + tag + [out.path]),
+               await MediaStore.probe(out) != nil { return out }
+            break
+        }
         // 2. Full transcode with the hardware encoder.
         if await run(bin, ["-y", "-i", url.path, "-map", "0:v:0?", "-map", "0:a:0?",
                            "-c:v", "h264_videotoolbox", "-q:v", "70", "-pix_fmt", "yuv420p",
@@ -726,6 +738,20 @@ enum FFmpeg {
            await MediaStore.probe(out) != nil { return out }
         try? FileManager.default.removeItem(at: out)
         return nil
+    }
+
+    /// Whether macOS can decode the file's sound (true when it has none).
+    static func soundPlays(_ url: URL) async -> Bool {
+        let asset = AVURLAsset(url: url)
+        guard let track = try? await asset.loadTracks(withMediaType: .audio).first else { return true }
+        guard let reader = try? AVAssetReader(asset: asset) else { return false }
+        let out = AVAssetReaderTrackOutput(track: track, outputSettings: [AVFormatIDKey: kAudioFormatLinearPCM])
+        guard reader.canAdd(out) else { return false }
+        reader.add(out)
+        reader.timeRange = CMTimeRange(start: .zero, duration: CMTime(seconds: 1, preferredTimescale: 600))
+        guard reader.startReading() else { return false }
+        defer { reader.cancelReading() }
+        return out.copyNextSampleBuffer() != nil && reader.status != .failed
     }
 
     private static func run(_ bin: String, _ args: [String]) async -> Bool {
