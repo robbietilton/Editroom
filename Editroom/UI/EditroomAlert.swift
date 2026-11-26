@@ -68,35 +68,6 @@ final class EditroomAlert: NSAlert {
         DispatchQueue.main.async { [weak self] in self?.styleButtons() }
     }
 
-    /// Shown over `parent` without holding up the app: clicks, keys and files dropped on the editor while it's up go
-    /// there as usual, rather than being turned away with macOS's beep. It looks as `runModal` shows it.
-    func show(over parent: NSWindow, then handler: @escaping (NSApplication.ModalResponse) -> Void) {
-        prepare(action: #selector(pressed(_:)))
-        answer = handler
-        Self.showing.insert(self)
-        center(over: parent)
-        parent.addChildWindow(window, ordered: .above)
-        window.makeKeyAndOrderFront(nil)
-        // Its size can settle once it's showing: centred again then.
-        DispatchQueue.main.async { [weak self] in
-            self?.styleButtons()
-            self?.center(over: parent)
-        }
-    }
-
-    private var answer: ((NSApplication.ModalResponse) -> Void)?
-    /// Kept while showing (nothing else holds an alert that isn't run modally).
-    private static var showing: Set<EditroomAlert> = []
-
-    @objc private func pressed(_ sender: NSButton) {
-        window.parent?.removeChildWindow(window)
-        window.orderOut(nil)
-        let handler = answer
-        answer = nil
-        Self.showing.remove(self)
-        handler?(NSApplication.ModalResponse(rawValue: sender.tag))
-    }
-
     private func styleButtons() {
         guard let main = buttons.first(where: { $0.keyEquivalent == "\r" }) ?? buttons.first else { return }
         main.attributedTitle = NSAttributedString(string: main.title, attributes: [
