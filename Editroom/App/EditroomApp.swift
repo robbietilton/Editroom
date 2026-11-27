@@ -258,7 +258,7 @@ struct EditroomApp: App {
                 }
                 Divider()
                 Button("Close Tab") { workspace.closeActive() }.keyboardShortcut(keys.menu(.closeTab))
-                    .disabled(workspace.tabs.count < 2)
+                    .disabled(!workspace.canClose)
                 Button("Save") { model.save() }.keyboardShortcut(keys.menu(.save))
                 Button("Save As…") { model.saveAs() }.keyboardShortcut(keys.menu(.saveAs))
                 Divider()

@@ -2643,6 +2643,21 @@ final class EditorModel: ObservableObject {
         NSApp.activate()
     }
 
+    /// The project is closed, leaving an empty Untitled one in its place (⌘W on the only tab). Unsaved work
+    /// asks first, as closing a tab does; returns false if that's cancelled.
+    @discardableResult
+    func closeProject() -> Bool {
+        restoreIfNeeded()
+        guard !isBlank else { return true }
+        guard confirmDiscard() else { return false }
+        load(Project(), url: nil)
+        try? FileManager.default.removeItem(at: recoveryURL)
+        recoveryFor = nil
+        lastRecovered = nil
+        lastSession = nil
+        return true
+    }
+
     /// File > New: a new tab.
     func newProject() { Workspace.shared.newTab() }
 

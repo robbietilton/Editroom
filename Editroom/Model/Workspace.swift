@@ -104,9 +104,15 @@ final class Workspace: ObservableObject {
         }
     }
 
-    /// Closes a tab, asking first about unsaved work as closing the project would. The last tab stays.
+    /// Closes a tab, asking first about unsaved work as closing the project would. The last tab stays, with its
+    /// project closed and an empty Untitled one in its place.
     func close(_ model: EditorModel) {
-        guard tabs.count > 1, let i = tabs.firstIndex(where: { $0 === model }), !(locked && model === active) else { return }
+        if tabs.count == 1 {
+            guard !locked else { return }
+            model.closeProject()
+            return
+        }
+        guard let i = tabs.firstIndex(where: { $0 === model }), !(locked && model === active) else { return }
         // Unsaved work in it is put in front before asking about it.
         model.restoreIfNeeded()
         if model.isDirty { select(model) }
@@ -126,6 +132,9 @@ final class Workspace: ObservableObject {
     }
 
     func closeActive() { close(active) }
+
+    /// Close Tab does something: there's another tab, or a project in this one.
+    var canClose: Bool { tabs.count > 1 || !active.isBlank }
 
     func closeOthers(than model: EditorModel) {
         for other in tabs where other !== model { close(other) }

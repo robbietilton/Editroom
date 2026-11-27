@@ -146,7 +146,9 @@ private struct TabItem: View {
     @State private var hovering = false
 
     var body: some View {
-        let showsClose = !single && (active || hovering)
+        // The only tab shows × on hover (closing its project), unless it's already empty.
+        let closable = !single || !model.isBlank
+        let showsClose = closable && (single ? hovering : active || hovering)
         HStack(spacing: 6) {
             Text(model.title)
                 .font(.system(size: 12.5, weight: .medium))
@@ -156,7 +158,7 @@ private struct TabItem: View {
             if model.showsUnsaved {
                 Circle().fill(active ? Theme.textDim : Theme.textFaint).frame(width: 5, height: 5)
             }
-            if !single {
+            if closable {
                 // Room for × kept on every tab, so a tab doesn't change width as it's hovered.
                 TabCloseButton(action: close)
                     .opacity(showsClose ? 1 : 0)
@@ -164,7 +166,7 @@ private struct TabItem: View {
             }
         }
         .padding(.leading, 13)
-        .padding(.trailing, single ? 13 : 6)
+        .padding(.trailing, closable ? 6 : 13)
         .frame(maxHeight: .infinity)
         .background(Capsule().fill(fill))
         .contentShape(Capsule())
