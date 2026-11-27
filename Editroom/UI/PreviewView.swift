@@ -137,7 +137,7 @@ struct PreviewView: View {
                     PreviewSurfaceView(model: model)
                         .frame(width: w, height: h)
                         // Square, as the export is, with its faint edge drawn just outside the picture, not over it.
-                        .overlay(Rectangle().inset(by: -0.5).stroke(Theme.ink.opacity(0.08), lineWidth: 1))
+                        .overlay(Rectangle().inset(by: -0.5).stroke(Theme.ink.opacity(0.05), lineWidth: 1))
                     // Nothing on the timeline yet: say how to start, and take a click as "import". Not while
                     // a Media item is hovered: its frame is drawn underneath, by the player, once skimming rests.
                     if model.project.clips.isEmpty, source.current == nil {
