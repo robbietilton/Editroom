@@ -719,7 +719,9 @@ final class TimelineCanvas: NSView {
             candidates.append(c.start + dt)
             candidates.append(c.end + dt)
         }
-        if let s = snap(candidates, to: project.snapTargets(excluding: ids) + [model.playhead]), minStart + dt + s.delta >= -1e-9 {
+        // Moving, the clips' own edges aren't something to snap to. Duplicating (Option), the originals stay where
+        // they are, so their edges are: a copy goes straight against the end of the clip it's copied from.
+        if let s = snap(candidates, to: project.snapTargets(excluding: duplicating ? [] : ids) + [model.playhead]), minStart + dt + s.delta >= -1e-9 {
             dt += s.delta
             snapLine = s.target
             snapped = true
