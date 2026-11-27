@@ -140,11 +140,12 @@ struct InspectorView: View {
             Text(label)
                 .font(.system(size: 11.5))
                 .foregroundStyle(on == false ? Theme.textFaint : Theme.text)
-            Spacer()
-            // Highlight and outline: an eye beside the colour, to show or hide them.
+            // Highlight and outline: an eye right after the name, to show or hide them (as Grade's beside its title).
             if let on, let toggle {
                 CaptionEye(on: on) { model.setCaptionStyle(toggle) }
+                    .padding(.leading, -4)
             }
+            Spacer()
             ColorField(color: color) { c in model.setCaptionStyle(live: true, settles: true) { set(&$0, c) } }
                 .frame(width: 44)
                 .opacity(on == false ? 0.4 : 1)
@@ -2196,12 +2197,13 @@ private struct CaptionEye: View {
 
     var body: some View {
         Button(action: action) {
-            // The tracks' eye (MiniKey), without its box.
-            Glyph(symbol: on ? "eye" : "eye.slash", size: 9.5, weight: .semibold)
+            // The same size as Grade's eye.
+            Image(systemName: on ? "eye" : "eye.slash")
+                .font(.system(size: 10.5, weight: .medium))
                 .foregroundStyle(on ? Theme.textDim : Theme.textFaint)
                 // Hovered: a touch brighter than it is, on or off.
                 .brightness(hovering ? 0.1 : 0)
-                .frame(width: 20, height: 20)
+                .frame(width: 18, height: 16)
                 .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
