@@ -3,9 +3,9 @@ import Foundation
 
 /// `Editroom --mcp`: for agents that start their tools as a program and talk over stdin and stdout
 /// (Claude Desktop, Codex). Each line in is passed to the running app's MCP server and its reply is
-/// written back. While Editroom is closed, saying hello and listing the tools are answered here, so an
-/// agent starting up (a new chat, the app opening) doesn't open Editroom; the first real request opens
-/// it. Nothing else is ever written to stdout.
+/// written back. While Editroom is closed, everything but using a tool is answered here, so an agent
+/// starting up or idling (a new chat, the app opening, its checks now and then) doesn't open Editroom;
+/// the first tool it uses opens it. Nothing else is ever written to stdout.
 enum MCPBridge {
     static func runIfRequested() {
         guard CommandLine.arguments.contains("--mcp") else { return }
@@ -63,15 +63,20 @@ enum MCPBridge {
             let id = json?["id"]
             let method = json?["method"] as? String ?? ""
             var reply: Data?
-            // Hello, ping, the lists of tools (and of resources and prompts, which it has none of) and
-            // notifications: Editroom's own answer if it's open; this one, and no opening it, if it's closed.
-            if let json, MCPHandler.isStartup(method) {
+            // Anything but using a tool: Editroom's own answer if it's open; with it closed, answered here (what
+            // it would say, or that it doesn't do that), and Editroom isn't opened.
+            if let json, !MCPHandler.opensEditroom(method) {
                 let (body, status) = post(data)
                 if status == 200 || status == 202 {
                     reply = status == 200 ? body : nil
                 } else if status == 0 {
                     if method == "initialize" { heldHello = data }
-                    reply = MainActor.assumeIsolated { MCPHandler.handshake(json) }.flatMap { try? JSONSerialization.data(withJSONObject: $0) }
+                    // A reply to something asked of the agent (no method) or a notification needs no answer.
+                    if !method.isEmpty, id != nil {
+                        let answer = MainActor.assumeIsolated { MCPHandler.handshake(json) }
+                            ?? ["jsonrpc": "2.0", "id": id ?? NSNull(), "error": ["code": -32601, "message": "Method not found: \(method)"]]
+                        reply = try? JSONSerialization.data(withJSONObject: answer)
+                    }
                 } else {
                     reply = body
                 }

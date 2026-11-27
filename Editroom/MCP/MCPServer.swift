@@ -258,11 +258,10 @@ enum MCPHandler {
         }
     }
 
-    /// What an agent asks just to get started: answered without opening Editroom when it's closed.
-    nonisolated static func isStartup(_ method: String) -> Bool {
-        ["initialize", "ping", "tools/list", "resources/list", "resources/templates/list", "prompts/list"].contains(method)
-            || method.hasPrefix("notifications/")
-    }
+    /// Whether a request needs Editroom itself, and opens it when it's closed: only using a tool does. Everything
+    /// else an agent sends (its hello, pings, asking what there is, as it starts up or now and then) is answered
+    /// without it, so an AI app starting or idling never opens Editroom.
+    nonisolated static func opensEditroom(_ method: String) -> Bool { method == "tools/call" }
 
     static func handle(_ req: [String: Any], client: MCPServer.Client?, draft token: String? = nil) async -> [String: Any] {
         if let reply = handshake(req) { return reply }
