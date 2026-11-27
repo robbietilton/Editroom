@@ -497,6 +497,8 @@ final class EditorModel: ObservableObject {
                         var clips = self.makeClips(.asset(a.id), at: 0, videoTrack: v, audioTrack: au)
                         clips += self.makeClips(.asset(a.id), at: a.duration, videoTrack: v, audioTrack: au)
                         self.insert(clips)
+                        // `--handoff-hdr`: in an HDR project.
+                        if args.contains("--handoff-hdr") { self.project.hdr = true }
                         Task { @MainActor in
                             // `--handoff-captions`: with the clips captioned (heard first).
                             if args.contains("--handoff-captions") {
@@ -1626,11 +1628,13 @@ final class EditorModel: ObservableObject {
     private func offerMatch(_ asset: MediaAsset) {
         guard asset.kind == .video, !project.settingsLocked, asset.width > 0, asset.height > 0 else { return }
         let fps = Self.standardFPS(asset.fps)
+        let hdr = isHDR(asset)
         project.settingsLocked = true
-        if asset.width == project.width, asset.height == project.height, fps == project.fps { return }
+        if asset.width == project.width, asset.height == project.height, fps == project.fps, hdr == project.isHDR { return }
         let alert = EditroomAlert()
         alert.messageText = "Match the sequence to “\(asset.name)”?"
-        alert.informativeText = "\(asset.width) × \(asset.height) · \(InspectorView.fpsLabel(fps))\nThe sequence is currently \(project.width) × \(project.height) · \(InspectorView.fpsLabel(project.fps))."
+        // HDR video: matching makes the sequence HDR too, so it keeps its highlights.
+        alert.informativeText = "\(asset.width) × \(asset.height) · \(InspectorView.fpsLabel(fps))\(hdr ? " · HDR" : "")\nThe sequence is currently \(project.width) × \(project.height) · \(InspectorView.fpsLabel(project.fps))\(project.isHDR ? " · HDR" : "")."
         alert.addButton(withTitle: "Match")
         // Esc keeps the sequence as it is.
         alert.addButton(withTitle: "Keep Current").keyEquivalent = "\u{1b}"
@@ -1639,6 +1643,7 @@ final class EditorModel: ObservableObject {
             p.width = asset.width
             p.height = asset.height
             p.fps = fps
+            if hdr { p.hdr = true }
         }
     }
 
@@ -1675,6 +1680,8 @@ final class EditorModel: ObservableObject {
         generator.videoComposition = built.videoComposition
         generator.requestedTimeToleranceBefore = .zero
         generator.requestedTimeToleranceAfter = .zero
+        // An HDR project's frame as SDR: these go to AI apps and images, which expect it.
+        if p.isHDR, #available(macOS 15, *) { generator.dynamicRangePolicy = .forceSDR }
         let t = min(max(0, time), max(0, built.duration - 1 / p.fps))
         guard let cg = try? await generator.image(at: CompositionBuilder.time(t)).image else { return nil }
         return NSImage(cgImage: cg, size: .zero)
@@ -2407,18 +2414,34 @@ final class EditorModel: ObservableObject {
     /// Whether the sequence already has a video's frame size and rate.
     func sequenceMatches(_ asset: MediaAsset) -> Bool {
         asset.width == project.width && asset.height == project.height && Self.standardFPS(asset.fps) == project.fps
+            && (!isHDR(asset) || project.isHDR)
     }
 
     /// Sets the sequence's frame size and rate to a video's (an undoable edit).
     func matchSequence(to asset: MediaAsset) {
         guard asset.kind == .video, asset.width > 0, asset.height > 0 else { return }
+        let hdr = isHDR(asset)
         mutate { p in
             p.width = asset.width
             p.height = asset.height
             p.fps = Self.standardFPS(asset.fps)
+            // An HDR video makes the sequence HDR; an SDR one leaves it as it is.
+            if hdr { p.hdr = true }
             p.settingsLocked = true
         }
     }
+
+    /// The sequence in HDR (HLG) or SDR (Rec.709), an undoable edit.
+    func setHDR(_ on: Bool) {
+        guard project.isHDR != on else { return }
+        mutate { p in
+            p.hdr = on ? true : nil
+            p.settingsLocked = true
+        }
+    }
+
+    /// Whether a library video is HDR (HLG or PQ).
+    func isHDR(_ asset: MediaAsset) -> Bool { media.runtimes[asset.id]?.sourceColor.isHDR == true }
 
     func setFPS(_ fps: Double) {
         mutate { p in

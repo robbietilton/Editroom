@@ -28,7 +28,7 @@ final class PreviewSurface: NSView {
         // A viewer that has just appeared (full screen, say) starts on the frame already showing.
         if current == nil, let last = model.engine.lastFrame {
             current = last
-            layer?.contents = CVPixelBufferGetIOSurface(last)?.takeUnretainedValue()
+            show(last)
         }
         let l = displayLink(target: self, selector: #selector(step(_:)))
         l.add(to: .main, forMode: .common)
@@ -46,8 +46,23 @@ final class PreviewSurface: NSView {
     private func show(_ buffer: CVPixelBuffer?) {
         CATransaction.begin()
         CATransaction.setDisableActions(true)
-        layer?.contents = buffer.flatMap { fits($0) ? CVPixelBufferGetIOSurface($0)?.takeUnretainedValue() : nil }
+        let surface = buffer.flatMap { fits($0) ? CVPixelBufferGetIOSurface($0)?.takeUnretainedValue() : nil }
+        if let buffer, let surface { prepareHDR(buffer, surface) }
+        layer?.contents = surface
         CATransaction.commit()
+    }
+
+    private static let hlgSpace = CGColorSpace(name: CGColorSpace.itur_2100_HLG)!.copyPropertyList()
+
+    /// An HDR project's frame (HLG): shown with the screen's extra brightness above white (EDR), as Photos and
+    /// QuickTime show HDR, on any Mac that has some. SDR frames are shown as they always were.
+    private func prepareHDR(_ buffer: CVPixelBuffer, _ surface: IOSurface) {
+        let hlg = (CVBufferCopyAttachment(buffer, kCVImageBufferTransferFunctionKey, nil) as? String)
+            == (kCVImageBufferTransferFunction_ITU_R_2100_HLG as String)
+        if layer?.wantsExtendedDynamicRangeContent != hlg { layer?.wantsExtendedDynamicRangeContent = hlg }
+        guard hlg, let space = Self.hlgSpace else { return }
+        // What the frame's values mean, on the surface the layer shows.
+        IOSurfaceSetValue(surface, kIOSurfaceColorSpace, space)
     }
 
     // Resized to a new shape: the frame showing is hidden if it no longer fits (the new one follows).

@@ -36,6 +36,17 @@ enum SourceColor: Equatable {
                                             AVVideoYCbCrMatrixKey: AVVideoYCbCrMatrix_ITU_R_709_2]]
     }
 
+    /// What to ask a frame reader for to keep HDR as HDR: 10-bit HLG in Rec.2020 (PQ converted to it).
+    static let hlgReadSettings: [String: Any] = [
+        kCVPixelBufferPixelFormatTypeKey as String: kCVPixelFormatType_420YpCbCr10BiPlanarVideoRange,
+        AVVideoColorPropertiesKey: [AVVideoColorPrimariesKey: AVVideoColorPrimaries_ITU_R_2020,
+                                    AVVideoTransferFunctionKey: AVVideoTransferFunction_ITU_R_2100_HLG,
+                                    AVVideoYCbCrMatrixKey: AVVideoYCbCrMatrix_ITU_R_2020],
+    ]
+
+    /// HDR that an HDR project keeps as HDR.
+    var isHDR: Bool { self == .hlg || self == .pq }
+
     static func of(_ track: AVAssetTrack) -> SourceColor {
         guard let fd = track.formatDescriptions.first else { return .standard }
         let desc = fd as! CMFormatDescription

@@ -80,6 +80,10 @@ enum CompositionBuilder {
         var hasher = Hasher()
         hasher.combine(Int(renderSize.width)); hasher.combine(Int(renderSize.height))
         hasher.combine(project.fps); hasher.combine(time(total).value)
+        // HDR (HLG): HDR clips come through composition tracks as they are, SDR clips are read from their files
+        // (AVFoundation would brighten them into HDR), and everything is put together in HDR.
+        let hdr = project.isHDR
+        hasher.combine(hdr)
         hasher.combine(includeVideo); hasher.combine(includeAudio)
 
         if let base = BaseVideo.track, let t = comp.addMutableTrack(withMediaType: .video, preferredTrackID: kCMPersistentTrackID_Invalid) {
@@ -113,7 +117,8 @@ enum CompositionBuilder {
                     switch clip.kind {
                     case .video where clip.playsBackwards:
                         // Read backwards from the file as it plays; no composition track needed.
-                        guard let id = clip.assetID, let rt = media.runtimes[id], let frames = rt.reverseFrames,
+                        guard let id = clip.assetID, let rt = media.runtimes[id],
+                              let frames = hdr && rt.sourceColor.isHDR ? rt.hdrFrames : rt.reverseFrames,
                               let length = project.asset(id)?.duration else { continue }
                         var shown = clip
                         shown.start -= plan.leadIn
@@ -123,9 +128,9 @@ enum CompositionBuilder {
                         layers.append(RenderLayer(clip: clip, source: .reversed(frames, rt.orientation, limit: limit, clock: SourceClock(shown), length: length),
                                                   cube: GradeBaker.cube(for: clip.grade), color: rt.sourceColor, plan: plan,
                                                   scrub: rt.sourceColor.isStandard ? ScrubSource(asset: id, clock: SourceClock(shown), reversedLength: length) : nil))
-                    case .video where clip.assetID.flatMap { media.runtimes[$0] }.map { !$0.sourceColor.isStandard } == true:
-                        // HDR and Log: read from the file as it plays, so the compositor gets the file's own
-                        // pixels; no composition track needed.
+                    case .video where clip.assetID.flatMap { media.runtimes[$0] }.map { hdr ? !$0.sourceColor.isHDR : !$0.sourceColor.isStandard } == true:
+                        // Read from the file as it plays, so the compositor gets the file's own pixels; no composition
+                        // track needed. An SDR project: HDR and Log. An HDR project: SDR and Log.
                         guard let id = clip.assetID, let rt = media.runtimes[id], let frames = rt.reverseFrames else { continue }
                         var shown = clip
                         shown.start -= plan.leadIn
@@ -133,7 +138,8 @@ enum CompositionBuilder {
                         hash(shown, media: media, into: &hasher)
                         let limit = Int(max(canvas.width, canvas.height).rounded())
                         layers.append(RenderLayer(clip: clip, source: .decoded(frames, rt.orientation, limit: limit, clock: SourceClock(shown)),
-                                                  cube: GradeBaker.cube(for: clip.grade), color: rt.sourceColor, plan: plan))
+                                                  cube: GradeBaker.cube(for: clip.grade), color: rt.sourceColor, plan: plan,
+                                                  scrub: rt.sourceColor.isStandard ? ScrubSource(asset: id, clock: SourceClock(shown)) : nil))
                     case .video:
                         guard let id = clip.assetID, let rt = media.runtimes[id], let src = rt.videoTrack else { continue }
                         let lane = index % 2
@@ -149,7 +155,7 @@ enum CompositionBuilder {
                         guard let ct = compTracks[lane], insert(shown, source: src, range: rt.videoRange, into: ct, cursor: &cursors[lane]) else { continue }
                         hash(shown, media: media, into: &hasher)
                         layers.append(RenderLayer(clip: clip, source: .track(ct.trackID, rt.orientation), cube: GradeBaker.cube(for: clip.grade), color: rt.sourceColor, plan: plan,
-                                                  scrub: ScrubSource(asset: id, clock: SourceClock(shown))))
+                                                  scrub: rt.sourceColor.isStandard ? ScrubSource(asset: id, clock: SourceClock(shown)) : nil))
                     case .image:
                         guard let cg = media.still(clip.assetID) else { continue }
                         let img = CIImage(cgImage: cg)
@@ -249,23 +255,32 @@ enum CompositionBuilder {
         }
 
         let vc = AVMutableVideoComposition()
-        vc.customVideoCompositorClass = TimelineCompositor.self
         vc.frameDuration = frameDuration(fps: project.fps)
         vc.renderSize = renderSize
-        // The timeline is Rec.709. Only SDR clips go through composition tracks (AVFoundation leaves
-        // them as they are); HDR and Log clips are read straight from their files and converted by
-        // the compositor (SourceColor), because AVFoundation's conversion of them is inaccurate.
-        vc.colorPrimaries = AVVideoColorPrimaries_ITU_R_709_2
-        vc.colorTransferFunction = AVVideoTransferFunction_ITU_R_709_2
-        vc.colorYCbCrMatrix = AVVideoYCbCrMatrix_ITU_R_709_2
+        if hdr {
+            // HLG in Rec.2020: HDR clips' composition tracks arrive as they are (PQ made HLG).
+            vc.customVideoCompositorClass = HDRTimelineCompositor.self
+            vc.colorPrimaries = AVVideoColorPrimaries_ITU_R_2020
+            vc.colorTransferFunction = AVVideoTransferFunction_ITU_R_2100_HLG
+            vc.colorYCbCrMatrix = AVVideoYCbCrMatrix_ITU_R_2020
+        } else {
+            // The timeline is Rec.709. Only SDR clips go through composition tracks (AVFoundation leaves
+            // them as they are); HDR and Log clips are read straight from their files and converted by
+            // the compositor (SourceColor), because AVFoundation's conversion of them is inaccurate.
+            vc.customVideoCompositorClass = TimelineCompositor.self
+            vc.colorPrimaries = AVVideoColorPrimaries_ITU_R_709_2
+            vc.colorTransferFunction = AVVideoTransferFunction_ITU_R_709_2
+            vc.colorYCbCrMatrix = AVVideoYCbCrMatrix_ITU_R_709_2
+        }
         let range = CMTimeRange(start: .zero, duration: CMTimeMaximum(comp.duration, time(total)))
         // Captions: read from what's said in the captioned clips, unless the caption track is hidden.
         var captions: [CaptionLayer] = []
         if includeVideo, let track = project.captions, !track.hidden {
             captions = CaptionRenderer.layers(CaptionLayout.blocks(project) { media.transcript($0.id) }, style: track.style)
         }
+        // The upscaler works in Rec.709; an HDR export is resized as before.
         vc.instructions = [TimelineInstruction(timeRange: range, layers: layers, trackIDs: requiredTracks, canvas: canvas, offset: offset,
-                                               captions: captions, upscale: upscale)]
+                                               captions: captions, upscale: upscale && !hdr, hdr: hdr)]
 
         var mix: AVMutableAudioMix?
         if !mixParams.isEmpty {

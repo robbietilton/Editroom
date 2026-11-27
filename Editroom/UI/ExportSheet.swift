@@ -144,9 +144,17 @@ struct ExportSheet: View {
                     }
                 }
                 row("Codec") {
-                    SheetMenu(label: settings.codec.rawValue, height: h) {
-                        ForEach(ExportSettings.Codec.allCases, id: \.self) { codec in
-                            Button(codec.rawValue) { settings.codec = codec }
+                    // An HDR project is always 10-bit HEVC in HLG (H.264 can't carry HDR).
+                    if model.project.isHDR {
+                        SheetMenu(label: "HEVC · HDR (HLG)", height: h) {
+                            Button("HEVC · HDR (HLG, 10-bit)") {}
+                            Text("H.264 can't carry HDR. For an SDR file, set the sequence to SDR.")
+                        }
+                    } else {
+                        SheetMenu(label: settings.codec.rawValue, height: h) {
+                            ForEach(ExportSettings.Codec.allCases, id: \.self) { codec in
+                                Button(codec.rawValue) { settings.codec = codec }
+                            }
                         }
                     }
                 }

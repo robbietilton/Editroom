@@ -1,6 +1,7 @@
 import Combine
 import AVFoundation
 import AppKit
+import VideoToolbox
 
 struct ExportSettings: Equatable {
     enum Format: String, CaseIterable { case mp4 = "Video", wav = "Audio" }
@@ -303,6 +304,8 @@ final class ExportJob {
     private var pairs: [(AVAssetReaderOutput, AVAssetWriterInput)] = []
     private let duration: Double
     private let url: URL
+    /// An HDR project's export: frames are HLG in Rec.2020.
+    private var hdr = false
     var cancelled = false
 
     init(built: BuiltTimeline, settings: ExportSettings, size: CGSize, fps: Double, url: URL) throws {
@@ -315,9 +318,12 @@ final class ExportJob {
         writer.shouldOptimizeForNetworkUse = true
 
         if !wav {
+            // An HDR project: 10-bit HEVC in HLG, Rec.2020 (H.264 can't carry HDR), as an iPhone records it.
+            hdr = built.videoComposition.colorTransferFunction == AVVideoTransferFunction_ITU_R_2100_HLG
             let output = AVAssetReaderVideoCompositionOutput(
                 videoTracks: built.composition.tracks(withMediaType: .video),
-                videoSettings: [kCVPixelBufferPixelFormatTypeKey as String: kCVPixelFormatType_32BGRA])
+                videoSettings: [kCVPixelBufferPixelFormatTypeKey as String:
+                                    hdr ? kCVPixelFormatType_420YpCbCr10BiPlanarVideoRange : kCVPixelFormatType_32BGRA])
             output.videoComposition = built.videoComposition
             output.alwaysCopiesSampleData = false
             guard reader.canAdd(output) else { throw NSError(domain: "Editroom", code: 2, userInfo: [NSLocalizedDescriptionKey: "Couldn't set up video rendering."]) }
@@ -328,15 +334,21 @@ final class ExportJob {
                 AVVideoExpectedSourceFrameRateKey: Int(fps.rounded()),
                 AVVideoMaxKeyFrameIntervalKey: Int((fps * 2).rounded()),
             ]
-            if settings.codec == .h264 {
+            if hdr {
+                compression[AVVideoProfileLevelKey] = kVTProfileLevel_HEVC_Main10_AutoLevel as String
+            } else if settings.codec == .h264 {
                 compression[AVVideoProfileLevelKey] = AVVideoProfileLevelH264HighAutoLevel
             }
             let input = AVAssetWriterInput(mediaType: .video, outputSettings: [
-                AVVideoCodecKey: settings.codec == .h264 ? AVVideoCodecType.h264 : AVVideoCodecType.hevc,
+                AVVideoCodecKey: settings.codec == .h264 && !hdr ? AVVideoCodecType.h264 : AVVideoCodecType.hevc,
                 AVVideoWidthKey: Int(size.width),
                 AVVideoHeightKey: Int(size.height),
                 AVVideoCompressionPropertiesKey: compression,
-                AVVideoColorPropertiesKey: [
+                AVVideoColorPropertiesKey: hdr ? [
+                    AVVideoColorPrimariesKey: AVVideoColorPrimaries_ITU_R_2020,
+                    AVVideoTransferFunctionKey: AVVideoTransferFunction_ITU_R_2100_HLG,
+                    AVVideoYCbCrMatrixKey: AVVideoYCbCrMatrix_ITU_R_2020,
+                ] : [
                     AVVideoColorPrimariesKey: AVVideoColorPrimaries_ITU_R_709_2,
                     AVVideoTransferFunctionKey: AVVideoTransferFunction_ITU_R_709_2,
                     AVVideoYCbCrMatrixKey: AVVideoYCbCrMatrix_ITU_R_709_2,
@@ -414,14 +426,10 @@ final class ExportJob {
                             progress(min(1, p))
                         }
                     }
-                    // Frames are Rec.709 once composited, whatever the sources were. Without this
-                    // the encoder sees an HDR source's tags and converts the colours a second time.
+                    // Frames are Rec.709 once composited (HLG in an HDR project), whatever the sources were. Without
+                    // this the encoder sees a source's tags (or ICC profile) and converts the colours a second time.
                     if let frame = CMSampleBufferGetImageBuffer(sample) {
-                        // Including any colour space or ICC profile describing the HDR source.
-                        CVBufferRemoveAllAttachments(frame)
-                        CVBufferSetAttachment(frame, kCVImageBufferColorPrimariesKey, kCVImageBufferColorPrimaries_ITU_R_709_2, .shouldPropagate)
-                        CVBufferSetAttachment(frame, kCVImageBufferTransferFunctionKey, kCVImageBufferTransferFunction_ITU_R_709_2, .shouldPropagate)
-                        CVBufferSetAttachment(frame, kCVImageBufferYCbCrMatrixKey, kCVImageBufferYCbCrMatrix_ITU_R_709_2, .shouldPropagate)
+                        TimelineCompositor.tag(frame, hdr: self.hdr)
                     }
                     if !input.append(sample) {
                         input.markAsFinished()

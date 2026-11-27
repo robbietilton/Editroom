@@ -106,7 +106,8 @@ enum MCPTools {
             tool("set_audio", "Set level and fades", "A clip's sound level, and its fades: a sound clip's fade its sound, a video, photo, title or solid's fade its picture (in from black, out to black).", ["clip_id": str("A clip's id."), "gain_db": num("Sound level in dB, -60...12."), "fade_in": num("Seconds."), "fade_out": num("Seconds.")], required: ["clip_id"]),
             tool("set_transition", "Set transition", "A transition into a clip from the clip that ends where it starts on the same track.", ["clip_id": str("The later clip's id."), "kind": ["type": "string", "enum": ["dissolve", "dipToBlack", "wipe", "none"]], "duration": num("Seconds (default 0.5).")], required: ["clip_id", "kind"]),
             tool("add_track", "Add track", "Adds an empty track on top of the others of its kind.", ["kind": ["type": "string", "enum": ["video", "audio"]]], required: ["kind"]),
-            tool("set_sequence", "Set sequence", "The frame size and frame rate of the cut.", ["width": ["type": "integer"], "height": ["type": "integer"], "fps": num("23.976, 24, 25, 29.97, 30, 50, 59.94, 60, 100, 119.88 or 120.")]),
+            tool("set_sequence", "Set sequence", "The frame size, frame rate and dynamic range of the cut.", ["width": ["type": "integer"], "height": ["type": "integer"], "fps": num("23.976, 24, 25, 29.97, 30, 50, 59.94, 60, 100, 119.88 or 120."),
+                 "hdr": ["type": "boolean", "description": "true: HDR (HLG): HDR footage keeps its highlights in the viewer and the export (10-bit HEVC); false: SDR (Rec.709)."]]),
             tool("playback", "Playback", "Play, pause or move the playhead.", ["action": ["type": "string", "enum": ["play", "pause", "seek"]], "time": num("For seek.")], required: ["action"]),
             tool("history", "Undo or redo", "Undoes or redoes the last change (each tool call is one change).", ["action": ["type": "string", "enum": ["undo", "redo"]]], required: ["action"]),
             tool("auto_edit", "Auto edit", "Builds a whole cut from the library on its own: best moments, cut to the beat of a song if there is one, titled. Replaces what's on the timeline (one undo brings it back)."),
@@ -526,18 +527,21 @@ enum MCPTools {
                 size = (w, h)
             }
             let fps = (args["fps"] as? Double).map(EditorModel.standardFPS)
+            let hdr = args["hdr"] as? Bool
             if let draft {
                 draft.apply([.change(nil, "Sequence") { proj in
                     if let size { proj.width = size.0; proj.height = size.1 }
                     if let fps { proj.fps = fps }
+                    if let hdr { proj.hdr = hdr ? true : nil }
                     proj.settingsLocked = true
                 }])
             } else {
                 if let size { model.setSequence(width: size.0, height: size.1) }
                 if let fps { model.setFPS(fps) }
+                if let hdr { model.setHDR(hdr) }
             }
             let q = now()
-            return json(["width": q.width, "height": q.height, "fps": q.fps])
+            return json(["width": q.width, "height": q.height, "fps": q.fps, "hdr": q.isHDR])
 
         case "playback":
             if let draft {
@@ -820,7 +824,7 @@ enum MCPTools {
         }.map { clipJSON($0, p) }
         return [
             "name": title,
-            "sequence": ["width": p.width, "height": p.height, "fps": p.fps, "duration": round3(p.duration)],
+            "sequence": ["width": p.width, "height": p.height, "fps": p.fps, "hdr": p.isHDR, "duration": round3(p.duration)],
             "playhead": round3(playhead),
             "tracks": tracks,
             "clips": clips,

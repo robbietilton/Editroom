@@ -166,6 +166,67 @@ enum SelfTest {
         FileHandle.standardError.write((s + "\n").data(using: .utf8)!)
     }
 
+    /// A one-second 640×360 test clip whose picture is `value(x)` across (the same down): 10-bit HEVC in HLG (the
+    /// values are the HLG signal), or SDR in Rec.709.
+    private static func makeTestClip(_ url: URL, hlg: Bool, value: (Int) -> Double) async -> Bool {
+        try? FileManager.default.removeItem(at: url)
+        let W = 640, H = 360
+        guard let writer = try? AVAssetWriter(outputURL: url, fileType: .mov) else { return false }
+        let color: [String: Any] = hlg
+            ? [AVVideoColorPrimariesKey: AVVideoColorPrimaries_ITU_R_2020, AVVideoTransferFunctionKey: AVVideoTransferFunction_ITU_R_2100_HLG, AVVideoYCbCrMatrixKey: AVVideoYCbCrMatrix_ITU_R_2020]
+            : [AVVideoColorPrimariesKey: AVVideoColorPrimaries_ITU_R_709_2, AVVideoTransferFunctionKey: AVVideoTransferFunction_ITU_R_709_2, AVVideoYCbCrMatrixKey: AVVideoYCbCrMatrix_ITU_R_709_2]
+        let input = AVAssetWriterInput(mediaType: .video, outputSettings: [
+            AVVideoCodecKey: AVVideoCodecType.hevc, AVVideoWidthKey: W, AVVideoHeightKey: H,
+            AVVideoCompressionPropertiesKey: [AVVideoProfileLevelKey: (hlg ? kVTProfileLevel_HEVC_Main10_AutoLevel : kVTProfileLevel_HEVC_Main_AutoLevel) as String,
+                                              AVVideoQualityKey: 0.95],
+            AVVideoColorPropertiesKey: color])
+        let adaptor = AVAssetWriterInputPixelBufferAdaptor(assetWriterInput: input, sourcePixelBufferAttributes: [
+            kCVPixelBufferPixelFormatTypeKey as String: kCVPixelFormatType_64RGBAHalf, kCVPixelBufferWidthKey as String: W, kCVPixelBufferHeightKey as String: H])
+        writer.add(input)
+        guard writer.startWriting() else { return false }
+        writer.startSession(atSourceTime: .zero)
+        let columns = (0..<W).map { Float16(value($0)) }
+        for f in 0..<30 {
+            while !input.isReadyForMoreMediaData { try? await Task.sleep(nanoseconds: 2_000_000) }
+            guard let pool = adaptor.pixelBufferPool else { return false }
+            var pb: CVPixelBuffer?
+            CVPixelBufferPoolCreatePixelBuffer(nil, pool, &pb)
+            guard let b = pb else { return false }
+            CVPixelBufferLockBaseAddress(b, [])
+            let base = CVPixelBufferGetBaseAddress(b)!.assumingMemoryBound(to: Float16.self), row = CVPixelBufferGetBytesPerRow(b) / 2
+            for y in 0..<H { for x in 0..<W { let p = base + y * row + x * 4; p[0] = columns[x]; p[1] = columns[x]; p[2] = columns[x]; p[3] = 1 } }
+            CVPixelBufferUnlockBaseAddress(b, [])
+            CVBufferSetAttachment(b, kCVImageBufferColorPrimariesKey, hlg ? kCVImageBufferColorPrimaries_ITU_R_2020 : kCVImageBufferColorPrimaries_ITU_R_709_2, .shouldPropagate)
+            CVBufferSetAttachment(b, kCVImageBufferTransferFunctionKey, hlg ? kCVImageBufferTransferFunction_ITU_R_2100_HLG : kCVImageBufferTransferFunction_ITU_R_709_2, .shouldPropagate)
+            CVBufferSetAttachment(b, kCVImageBufferYCbCrMatrixKey, hlg ? kCVImageBufferYCbCrMatrix_ITU_R_2020 : kCVImageBufferYCbCrMatrix_ITU_R_709_2, .shouldPropagate)
+            adaptor.append(b, withPresentationTime: CMTime(value: CMTimeValue(f), timescale: 30))
+        }
+        input.markAsFinished()
+        await writer.finishWriting()
+        return writer.status == .completed
+    }
+
+    /// A file's video transfer function (HLG, Rec.709...), as its tags say.
+    private static func transferFunction(_ url: URL) async -> String? {
+        guard let track = try? await AVURLAsset(url: url).loadTracks(withMediaType: .video).first,
+              let fd = try? await track.load(.formatDescriptions).first else { return nil }
+        return CMFormatDescriptionGetExtension(fd, extensionKey: kCMFormatDescriptionExtension_TransferFunction) as? String
+    }
+
+    /// The luma (0...1) at points (x, y from the top) of the frame at `time`, read as the file has it (no conversion).
+    private static func lumaSamples(_ url: URL, at time: Double, points: [(Int, Int)]) async -> [Double?] {
+        let asset = AVURLAsset(url: url)
+        guard let track = try? await asset.loadTracks(withMediaType: .video).first, let reader = try? AVAssetReader(asset: asset) else { return points.map { _ in nil } }
+        let output = AVAssetReaderTrackOutput(track: track, outputSettings: [kCVPixelBufferPixelFormatTypeKey as String: kCVPixelFormatType_420YpCbCr10BiPlanarVideoRange])
+        reader.add(output)
+        reader.timeRange = CMTimeRange(start: CMTime(seconds: time, preferredTimescale: 600), duration: CMTime(seconds: 0.2, preferredTimescale: 600))
+        guard reader.startReading(), let sample = output.copyNextSampleBuffer(), let b = CMSampleBufferGetImageBuffer(sample) else { return points.map { _ in nil } }
+        CVPixelBufferLockBaseAddress(b, .readOnly)
+        defer { CVPixelBufferUnlockBaseAddress(b, .readOnly) }
+        let base = CVPixelBufferGetBaseAddressOfPlane(b, 0)!.assumingMemoryBound(to: UInt16.self), row = CVPixelBufferGetBytesPerRowOfPlane(b, 0) / 2
+        return points.map { x, y in (Double(base[y * row + x] >> 6) - 64) / 876 }
+    }
+
     private static func export(_ project: Project, _ media: MediaStore, _ settings: ExportSettings, to url: URL) async -> Bool {
         let exporter = Exporter()
         exporter.start(project: project, media: media, settings: settings, url: url)
@@ -1435,6 +1496,45 @@ enum SelfTest {
                 && { var back = switched; back.off = false; return GradeBaker.cube(for: back) != nil }()
             log("GRADE LEVELS \(opens && lifted && pulled && kept && offOK ? "OK" : "FAIL") opens=\(opens) lifted=\(lifted) pulled=\(pulled) kept=\(kept) off=\(offOK)")
             ok = ok && opens && lifted && pulled && kept && offOK
+        }
+        // HDR (HLG) project: an HLG clip keeps its highlights (normal white 0.75, a highlight 0.95), an SDR solid and an
+        // SDR clip's white land at standard white (0.75, not boosted), and the export is 10-bit HEVC tagged HLG. The same
+        // project as SDR still exports Rec.709.
+        do {
+            let hlgURL = outDir.appendingPathComponent("hdr_patches.mov"), sdrURL = outDir.appendingPathComponent("sdr_white.mov")
+            let madeHLG = await makeTestClip(hlgURL, hlg: true) { x in x < 320 ? 0.75 : 0.95 }
+            let madeSDR = await makeTestClip(sdrURL, hlg: false) { _ in 1.0 }
+            if madeHLG, madeSDR, let h = await media.importFile(hlgURL), let w = await media.importFile(sdrURL) {
+                var p = Project()
+                p.width = 640; p.height = 360; p.fps = 30; p.hdr = true; p.settingsLocked = true
+                p.assets = [h, w]
+                let v1 = p.videoTracks[0].id, v2 = p.videoTracks[1].id
+                var solid = Clip(trackID: v2, kind: .solid, start: 0, duration: 1)
+                solid.color = RGBA(r: 1, g: 1, b: 1, a: 1)
+                solid.transform = ClipTransform(scale: 0.25, x: 0, y: 0.3)
+                p.clips = [Clip(trackID: v1, kind: .video, assetID: h.id, start: 0, duration: 1),
+                           Clip(trackID: v1, kind: .video, assetID: w.id, start: 1, duration: 1), solid]
+                var s = ExportSettings(); s.codec = .h264; s.includeAudio = false
+                let hdrOut = outDir.appendingPathComponent("hdr_export.mp4")
+                let exported = await export(p, media, s, to: hdrOut)
+                let tags = await transferFunction(hdrOut)
+                let a = await lumaSamples(hdrOut, at: 0.5, points: [(160, 90), (480, 90), (320, 288)])
+                let b = await lumaSamples(hdrOut, at: 1.5, points: [(320, 180)])
+                let near = { (v: Double?, want: Double) in v.map { abs($0 - want) < 0.04 } ?? false }
+                let kept = near(a[0], 0.75) && near(a[1], 0.95)
+                let titleWhite = near(a[2], 0.75), sdrWhite = near(b[0], 0.75)
+                var sdr = p; sdr.hdr = nil
+                let sdrOut = outDir.appendingPathComponent("hdr_as_sdr.mp4")
+                let sdrOK = await export(sdr, media, s, to: sdrOut)
+                let sdrTags = await transferFunction(sdrOut)
+                let good = exported && tags == (AVVideoTransferFunction_ITU_R_2100_HLG as String) && kept && titleWhite && sdrWhite
+                    && sdrOK && sdrTags == (AVVideoTransferFunction_ITU_R_709_2 as String)
+                log("HDR \(good ? "OK" : "FAIL") tags=\(tags ?? "-") highlights=\(kept) (\(a.map { $0.map { String(format: "%.3f", $0) } ?? "-" })) sdrWhite=\(sdrWhite) (\(b.map { $0.map { String(format: "%.3f", $0) } ?? "-" })) solidWhite=\(titleWhite) asSDR=\(sdrTags ?? "-")")
+                ok = ok && good
+            } else {
+                log("HDR FAIL couldn't make or open the test clips")
+                ok = false
+            }
         }
         // Speech language: one this Mac can't hear is said (by name), not guessed at in English; one it can is used;
         // Automatic is the Mac's. The setting is put back as it was.

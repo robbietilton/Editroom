@@ -299,9 +299,14 @@ enum TrackToken {
 // MARK: - Project
 
 struct Project: Codable, Equatable {
+    var isHDR: Bool { hdr == true }
+
     var width = 1920
     var height = 1080
     var fps: Double = 30
+    /// HDR (HLG, Rec.2020, 10-bit): HDR footage keeps its range in the viewer and the export, SDR sits at
+    /// standard white within it. Nil is SDR (Rec.709), as every project was before.
+    var hdr: Bool?
     var settingsLocked = false
     /// Index 0 is the bottom-most video track (V1).
     var videoTracks: [Track] = [Track(kind: .video), Track(kind: .video)]

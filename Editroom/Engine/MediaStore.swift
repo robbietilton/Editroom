@@ -24,6 +24,13 @@ final class MediaRuntime {
         ReverseFrames(asset: asset, track: $0, naturalSize: naturalSize, tenBit: !sourceColor.isStandard,
                       readSettings: sourceColor.readSettings)
     }
+    /// HDR clips' frames kept in HDR (HLG, Rec.2020), for an HDR project playing them backwards. PQ is
+    /// converted to HLG as it's read, so an HDR project has one kind of HDR.
+    lazy var hdrFrames: ReverseFrames? = videoTrack.flatMap { track in
+        sourceColor == .hlg || sourceColor == .pq
+            ? ReverseFrames(asset: asset, track: track, naturalSize: naturalSize, tenBit: true, readSettings: SourceColor.hlgReadSettings)
+            : nil
+    }
     var generator: FrameGrabber?
     /// Frames for hover-scrubbing a library tile: closer to the asked-for time than the filmstrip's.
     lazy var scrubGenerator: FrameGrabber = makeGenerator(maximumSize: CGSize(width: 400, height: 240),

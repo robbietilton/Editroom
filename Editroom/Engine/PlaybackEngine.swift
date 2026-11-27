@@ -19,6 +19,9 @@ final class PlaybackEngine {
     }
     private(set) var duration: Double = 0
     private(set) var fps: Double = 30
+    /// An HDR project: frames are half-float HLG (8-bit would clip and band its highlights).
+    private(set) var hdr = false
+    private var frameFormat: OSType { hdr ? kCVPixelFormatType_64RGBAHalf : kCVPixelFormatType_32BGRA }
     private var videoOutput: AVPlayerItemVideoOutput?
     private var signature: Int?
     private var isSeeking = false
@@ -66,6 +69,7 @@ final class PlaybackEngine {
     /// Rebuilds the player item. Changes that don't alter the edit structure only swap the video composition and mix.
     func rebuild(project: Project, media: MediaStore, at time: Double) {
         fps = project.fps
+        hdr = project.isHDR
         // The sound: read again only when something audible changed. Playing, the change is heard from
         // just ahead of the playhead, with no break in the sound. Muting and soloing aren't such a change:
         // each track's sound is silenced by its own lane, at once (unless a track ducks under another,
@@ -135,7 +139,7 @@ final class PlaybackEngine {
         let item = AVPlayerItem(asset: built.composition)
         item.videoComposition = built.videoComposition
         let output = AVPlayerItemVideoOutput(pixelBufferAttributes: [
-            kCVPixelBufferPixelFormatTypeKey as String: kCVPixelFormatType_32BGRA,
+            kCVPixelBufferPixelFormatTypeKey as String: frameFormat,
             kCVPixelBufferIOSurfacePropertiesKey as String: [String: Any](),
         ])
         item.add(output)
@@ -517,7 +521,7 @@ final class PlaybackEngine {
         } else {
             item = AVPlayerItem(asset: main.asset)
             let output = AVPlayerItemVideoOutput(pixelBufferAttributes: [
-                kCVPixelBufferPixelFormatTypeKey as String: kCVPixelFormatType_32BGRA,
+                kCVPixelBufferPixelFormatTypeKey as String: frameFormat,
                 kCVPixelBufferIOSurfacePropertiesKey as String: [String: Any](),
             ])
             item.add(output)
@@ -603,6 +607,7 @@ final class PlaybackEngine {
     private var scrubGeneration = 0
     private var scrubPool: CVPixelBufferPool?
     private var scrubPoolSize = CGSize.zero
+    private var scrubPoolHDR = false
 
     /// Shows the frame at `t` composited from made-ahead frames, if every video layer showing then has
     /// them. False when it can't (the player's seek has to do).
@@ -664,10 +669,11 @@ final class PlaybackEngine {
         scrubNext = nil
         scrubBusy = true
         let size = renderSize
-        if scrubPool == nil || scrubPoolSize != size {
+        let hdr = instruction.hdr
+        if scrubPool == nil || scrubPoolSize != size || scrubPoolHDR != hdr {
             var pool: CVPixelBufferPool?
             CVPixelBufferPoolCreate(nil, nil, [
-                kCVPixelBufferPixelFormatTypeKey as String: kCVPixelFormatType_32BGRA,
+                kCVPixelBufferPixelFormatTypeKey as String: hdr ? kCVPixelFormatType_64RGBAHalf : kCVPixelFormatType_32BGRA,
                 kCVPixelBufferWidthKey as String: Int(size.width),
                 kCVPixelBufferHeightKey as String: Int(size.height),
                 kCVPixelBufferIOSurfacePropertiesKey as String: [String: Any](),
@@ -675,6 +681,7 @@ final class PlaybackEngine {
             ] as CFDictionary, &pool)
             scrubPool = pool
             scrubPoolSize = size
+            scrubPoolHDR = hdr
         }
         let pool = scrubPool
         let generation = scrubGeneration
@@ -683,11 +690,8 @@ final class PlaybackEngine {
             if let pool { CVPixelBufferPoolCreatePixelBuffer(nil, pool, &buffer) }
             if let buffer {
                 let image = job.still ?? TimelineCompositor.compose(instruction, at: job.time, output: size) { i, _ in job.pictures[i] }
-                TimelineCompositor.context.render(image, to: buffer, bounds: CGRect(origin: .zero, size: size), colorSpace: nil)
-                // Tagged as the player's frames are, so the viewer shows them in the same colours.
-                CVBufferSetAttachment(buffer, kCVImageBufferColorPrimariesKey, kCVImageBufferColorPrimaries_ITU_R_709_2, .shouldPropagate)
-                CVBufferSetAttachment(buffer, kCVImageBufferTransferFunctionKey, kCVImageBufferTransferFunction_ITU_R_709_2, .shouldPropagate)
-                CVBufferSetAttachment(buffer, kCVImageBufferYCbCrMatrixKey, kCVImageBufferYCbCrMatrix_ITU_R_709_2, .shouldPropagate)
+                // Drawn and tagged as the player's frames are, so the viewer shows them in the same colours.
+                TimelineCompositor.render(image, to: buffer, size: size, hdr: hdr)
             }
             DispatchQueue.main.async {
                 MainActor.assumeIsolated {

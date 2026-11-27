@@ -106,10 +106,13 @@ final class TimelineInstruction: NSObject, AVVideoCompositionInstructionProtocol
     let captions: [CaptionLayer]
     /// Video drawn bigger than its own pixels is enlarged with the upscaler (on export), not just stretched.
     let upscale: Bool
+    /// An HDR project: put together in HDR (HLG, Rec.2020), SDR at standard white within it.
+    let hdr: Bool
 
     init(timeRange: CMTimeRange, layers: [RenderLayer], trackIDs: [CMPersistentTrackID], canvas: CGSize, offset: CGPoint = .zero,
-         captions: [CaptionLayer] = [], upscale: Bool = false) {
+         captions: [CaptionLayer] = [], upscale: Bool = false, hdr: Bool = false) {
         self.upscale = upscale
+        self.hdr = hdr
         self.timeRange = timeRange
         self.canvas = canvas
         self.offset = offset
@@ -119,7 +122,24 @@ final class TimelineInstruction: NSObject, AVVideoCompositionInstructionProtocol
     }
 }
 
-final class TimelineCompositor: NSObject, AVVideoCompositing {
+class TimelineCompositor: NSObject, AVVideoCompositing {
+    /// HDR projects: colour-managed, in linear Rec.2020 at half float, so HDR and SDR (at standard white, as
+    /// BT.2408 places it) go together and come out as HLG. SDR projects use `context`, untouched.
+    static let hdrContext: CIContext = {
+        let options: [CIContextOption: Any] = [
+            .workingColorSpace: CGColorSpace(name: CGColorSpace.extendedLinearITUR_2020)!,
+            .workingFormat: CIFormat.RGBAh,
+            .cacheIntermediates: false,
+        ]
+        if let device = MTLCreateSystemDefaultDevice() {
+            return CIContext(mtlDevice: device, options: options)
+        }
+        return CIContext(options: options)
+    }()
+    static let hlg = CGColorSpace(name: CGColorSpace.itur_2100_HLG)!
+    static let rec709 = CGColorSpace(name: CGColorSpace.itur_709)!
+    static let sRGB = CGColorSpace(name: CGColorSpace.sRGB)!
+
     static let context: CIContext = {
         let options: [CIContextOption: Any] = [
             .workingColorSpace: NSNull(),
@@ -138,21 +158,25 @@ final class TimelineCompositor: NSObject, AVVideoCompositing {
 
     // Take frames in the decoder's own YUV formats (8- and 10-bit), so a 4K frame isn't converted to
     // RGB on the way in; Core Image converts on the GPU as part of compositing.
-    let sourcePixelBufferAttributes: [String: any Sendable]? = [
-        kCVPixelBufferPixelFormatTypeKey as String: [
-            kCVPixelFormatType_420YpCbCr8BiPlanarVideoRange,
-            kCVPixelFormatType_420YpCbCr8BiPlanarFullRange,
-            kCVPixelFormatType_420YpCbCr10BiPlanarVideoRange,
-            kCVPixelFormatType_32BGRA,
-        ],
-        kCVPixelBufferMetalCompatibilityKey as String: true,
-        kCVPixelBufferIOSurfacePropertiesKey as String: [String: any Sendable](),
-    ]
+    var sourcePixelBufferAttributes: [String: any Sendable]? {
+        [
+            kCVPixelBufferPixelFormatTypeKey as String: [
+                kCVPixelFormatType_420YpCbCr8BiPlanarVideoRange,
+                kCVPixelFormatType_420YpCbCr8BiPlanarFullRange,
+                kCVPixelFormatType_420YpCbCr10BiPlanarVideoRange,
+                kCVPixelFormatType_32BGRA,
+            ],
+            kCVPixelBufferMetalCompatibilityKey as String: true,
+            kCVPixelBufferIOSurfacePropertiesKey as String: [String: any Sendable](),
+        ]
+    }
 
-    let requiredPixelBufferAttributesForRenderContext: [String: any Sendable] = [
-        kCVPixelBufferPixelFormatTypeKey as String: kCVPixelFormatType_32BGRA,
-        kCVPixelBufferMetalCompatibilityKey as String: true,
-    ]
+    var requiredPixelBufferAttributesForRenderContext: [String: any Sendable] {
+        [
+            kCVPixelBufferPixelFormatTypeKey as String: kCVPixelFormatType_32BGRA,
+            kCVPixelBufferMetalCompatibilityKey as String: true,
+        ]
+    }
 
     func renderContextChanged(_ newRenderContext: AVVideoCompositionRenderContext) {}
 
@@ -182,19 +206,37 @@ final class TimelineCompositor: NSObject, AVVideoCompositing {
             }
             let image = Self.compose(instruction, request: request)
             let size = request.renderContext.size
-            Self.context.render(image, to: output, bounds: CGRect(origin: .zero, size: size), colorSpace: nil)
-            // Every layer is Rec.709 by now. Saying so stops the encoder or display from "converting"
-            // a frame again because it inherited an HDR source's tags.
-            CVBufferRemoveAllAttachments(output)
-            CVBufferSetAttachment(output, kCVImageBufferColorPrimariesKey, kCVImageBufferColorPrimaries_ITU_R_709_2, .shouldPropagate)
-            CVBufferSetAttachment(output, kCVImageBufferTransferFunctionKey, kCVImageBufferTransferFunction_ITU_R_709_2, .shouldPropagate)
-            CVBufferSetAttachment(output, kCVImageBufferYCbCrMatrixKey, kCVImageBufferYCbCrMatrix_ITU_R_709_2, .shouldPropagate)
+            Self.render(image, to: output, size: size, hdr: instruction.hdr)
             request.finish(withComposedVideoFrame: output)
         }
     }
 
+    /// Draws a composed frame into `output` and tags it: Rec.709, or in an HDR project HLG in Rec.2020. Saying so
+    /// stops the encoder or display from "converting" a frame again because it inherited a source's tags.
+    static func render(_ image: CIImage, to output: CVPixelBuffer, size: CGSize, hdr: Bool) {
+        let bounds = CGRect(origin: .zero, size: size)
+        if hdr {
+            hdrContext.render(image, to: output, bounds: bounds, colorSpace: hlg)
+        } else {
+            context.render(image, to: output, bounds: bounds, colorSpace: nil)
+        }
+        tag(output, hdr: hdr)
+    }
+
+    static func tag(_ buffer: CVPixelBuffer, hdr: Bool) {
+        CVBufferRemoveAllAttachments(buffer)
+        CVBufferSetAttachment(buffer, kCVImageBufferColorPrimariesKey,
+                              hdr ? kCVImageBufferColorPrimaries_ITU_R_2020 : kCVImageBufferColorPrimaries_ITU_R_709_2, .shouldPropagate)
+        CVBufferSetAttachment(buffer, kCVImageBufferTransferFunctionKey,
+                              hdr ? kCVImageBufferTransferFunction_ITU_R_2100_HLG : kCVImageBufferTransferFunction_ITU_R_709_2, .shouldPropagate)
+        CVBufferSetAttachment(buffer, kCVImageBufferYCbCrMatrixKey,
+                              hdr ? kCVImageBufferYCbCrMatrix_ITU_R_2020 : kCVImageBufferYCbCrMatrix_ITU_R_709_2, .shouldPropagate)
+    }
+
     private static func compose(_ instruction: TimelineInstruction, request: AVAsynchronousVideoCompositionRequest) -> CIImage {
         let t = request.compositionTime.seconds + 1e-4
+        // HDR: the frame's values as they are; what they mean (HLG or Rec.709) is said per layer below.
+        let raw: [CIImageOption: Any]? = instruction.hdr ? [.colorSpace: NSNull()] : nil
         return compose(instruction, at: t, output: request.renderContext.size) { _, layer in
             let buffer: CVPixelBuffer?
             switch layer.source {
@@ -203,7 +245,7 @@ final class TimelineCompositor: NSObject, AVVideoCompositing {
             case .decoded(let frames, _, let limit, let clock): buffer = frames.frame(at: clock.source(at: t - 1e-4), limit: limit)
             default: buffer = nil
             }
-            return buffer.map { CIImage(cvPixelBuffer: $0) }
+            return buffer.map { CIImage(cvPixelBuffer: $0, options: raw) }
         }
     }
 
@@ -240,10 +282,14 @@ final class TimelineCompositor: NSObject, AVVideoCompositing {
                 }
                 // After scaling, so a 4K source is converted at the output's size.
                 image = layer.color.toRec709(image)
+                // HDR: HDR clips are HLG (PQ arrives as HLG); SDR and Log (Rec.709 by now) go in at standard white.
+                if instruction.hdr { image = image.matchedToWorkingSpace(from: layer.color.isHDR ? hlg : rec709) ?? image }
             case .image(let img):
                 image = img
             case .color(let color):
-                image = CIImage(color: color).cropped(to: frame)
+                // HDR: a solid's colour is SDR (sRGB), at standard white at most.
+                let c = instruction.hdr ? CIColor(red: color.red, green: color.green, blue: color.blue, alpha: color.alpha, colorSpace: sRGB) ?? color : color
+                image = CIImage(color: c).cropped(to: frame)
             }
             if let w = layer.wipe(at: t) {
                 image = image.cropped(to: CGRect(x: 0, y: 0, width: size.width * w, height: size.height))
@@ -257,10 +303,14 @@ final class TimelineCompositor: NSObject, AVVideoCompositing {
                 image = image.transformed(by: m)
             }
             if let cube = layer.cube {
+                // HDR: graded on the HLG signal, which runs 0...1 like the cube (highlights above standard white
+                // included), then back.
+                if instruction.hdr { image = image.matchedFromWorkingSpace(to: hlg) ?? image }
                 image = image.applyingFilter("CIColorCube", parameters: [
                     "inputCubeDimension": GradeCube.dimension,
                     "inputCubeData": cube,
                 ])
+                if instruction.hdr { image = image.matchedToWorkingSpace(from: hlg) ?? image }
             }
             if opacity < 0.999 {
                 image = image.applyingFilter("CIColorMatrix", parameters: [
@@ -277,5 +327,34 @@ final class TimelineCompositor: NSObject, AVVideoCompositing {
             if let image = caption.image(output: output) { out = image.composited(over: out) }
         }
         return out.cropped(to: CGRect(origin: .zero, size: output))
+    }
+}
+
+/// HDR projects' compositor: takes HDR frames as they are (10-bit HLG) and makes half-float HLG frames.
+final class HDRTimelineCompositor: TimelineCompositor {
+    var supportsHDRSourceFrames: Bool { true }
+    var supportsWideColorSourceFrames: Bool { true }
+
+    // 10-bit formats only for what may be HDR (no 8-bit RGB, which would clip it), plus 8-bit YUV for the blank
+    // base track. ProRes HDR arrives in 4:2:2.
+    override var sourcePixelBufferAttributes: [String: any Sendable]? {
+        [
+            kCVPixelBufferPixelFormatTypeKey as String: [
+                kCVPixelFormatType_420YpCbCr10BiPlanarVideoRange,
+                kCVPixelFormatType_422YpCbCr10BiPlanarVideoRange,
+                kCVPixelFormatType_420YpCbCr8BiPlanarVideoRange,
+                kCVPixelFormatType_420YpCbCr8BiPlanarFullRange,
+            ],
+            kCVPixelBufferMetalCompatibilityKey as String: true,
+            kCVPixelBufferIOSurfacePropertiesKey as String: [String: any Sendable](),
+        ]
+    }
+
+    override var requiredPixelBufferAttributesForRenderContext: [String: any Sendable] {
+        [
+            kCVPixelBufferPixelFormatTypeKey as String: kCVPixelFormatType_64RGBAHalf,
+            kCVPixelBufferMetalCompatibilityKey as String: true,
+            kCVPixelBufferIOSurfacePropertiesKey as String: [String: any Sendable](),
+        ]
     }
 }
