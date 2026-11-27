@@ -531,9 +531,9 @@ private struct MagicSettings: View {
     @AppStorage("magicEnabled") private var magicEnabled = true
     @AppStorage("magicShowWork") private var showWork = true
 
-    /// Claude Code only when it's on this Mac.
+    /// Claude Code only when it's on this Mac; the other rows offer a download when missing.
     private var apps: [AgentApp] {
-        [.claude, .chatgpt, .claudeCode].filter { $0 != .claudeCode || connect.states[$0] != .missing }
+        [.claude, .chatgpt, .opencode, .claudeCode].filter { $0 != .claudeCode || connect.states[$0] != .missing }
     }
 
     var body: some View {
@@ -543,7 +543,7 @@ private struct MagicSettings: View {
                     SectionLabel(text: "Magic")
                     VStack(spacing: 0) {
                         ToggleRow(title: "Enable Magic",
-                                  note: "Magic makes an edit for you: a quick cut on this Mac, or one Claude or ChatGPT works out from what you ask. Off hides the Magic button.",
+                                  note: "Magic makes an edit for you: a quick cut on this Mac, or one Claude, ChatGPT or OpenCode works out from what you ask. Off hides the Magic button.",
                                   isOn: $magicEnabled, boxed: false)
                         Divider().overlay(Theme.stroke)
                         ToggleRow(title: "Show Magic at work",
@@ -564,7 +564,7 @@ private struct MagicSettings: View {
                         }
                     }
                     .background(RoundedRectangle(cornerRadius: 9, style: .continuous).fill(Theme.field))
-                    Text("Connected apps use your own Claude or ChatGPT plan; no API key needed. Disconnecting stops Editroom answering that app, for Magic and for edits you ask for in the app.")
+                    Text("Connected apps use your own Claude, ChatGPT or OpenCode accounts; no Editroom API key needed. Disconnecting stops Editroom answering that app, for Magic and for edits you ask for in the app.")
                         .font(.system(size: 11))
                         .foregroundStyle(Theme.textFaint)
                         .fixedSize(horizontal: false, vertical: true)
@@ -602,7 +602,7 @@ private struct MagicSettings: View {
             .padding(.vertical, 16)
         }
         .onAppear { connect.refresh() }
-        // Back from Claude or ChatGPT: see what changed.
+        // Back from Claude, ChatGPT or OpenCode: see what changed.
         .onReceive(NotificationCenter.default.publisher(for: NSApplication.didBecomeActiveNotification)) { _ in
             connect.refresh()
         }
@@ -693,6 +693,7 @@ private struct AppRow: View {
         let id: String? = switch app {
         case .claude, .claudeCode: AgentConnect.claudeBundleID
         case .chatgpt: AgentConnect.chatgptBundleIDs.first { AgentConnect.appURL($0) != nil }
+        case .opencode: nil
         }
         guard let id, let url = AgentConnect.appURL(id) else { return nil }
         return NSWorkspace.shared.icon(forFile: url.path)
@@ -711,6 +712,8 @@ private struct AppRow: View {
         case (.claude, .connected): "Connected. Claude can edit here, and Magic can use it."
         case (.chatgpt, .ready): "Adds Editroom to Codex in the ChatGPT app."
         case (.chatgpt, .connected): "Connected. ChatGPT can edit here, and Magic can use it."
+        case (.opencode, .ready): "Adds Editroom to OpenCode for all your projects."
+        case (.opencode, .connected): "Connected. OpenCode can edit here, and Magic can use it."
         case (.claudeCode, .ready): "Adds Editroom to Claude Code for all your projects."
         case (.claudeCode, .connected): "Connected. New Claude Code sessions can edit here."
         default: ""
@@ -720,7 +723,13 @@ private struct AppRow: View {
     var body: some View {
         HStack(spacing: 12) {
             Group {
-                if let icon { Image(nsImage: icon).resizable() } else {
+                if let icon { Image(nsImage: icon).resizable() } else if app == .opencode {
+                    Image(systemName: "terminal.fill")
+                        .font(.system(size: 19, weight: .semibold))
+                        .foregroundStyle(Theme.text)
+                        .frame(width: 32, height: 32)
+                        .background(RoundedRectangle(cornerRadius: 7).fill(Theme.raised))
+                } else {
                     RoundedRectangle(cornerRadius: 7).fill(Theme.raised)
                 }
             }

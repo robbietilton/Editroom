@@ -4,7 +4,7 @@
 
 Fast and powerful video editing for Mac. Free, open source, and always yours.
 
-Editroom has the pro editing tools you need — color grading, speed ramps, transitions, audio mixing, loudness targets and exports in any shape — in a 7.5 MB app that plays 4K in realtime, with no proxies or buffering. Say what you want and watch Claude, ChatGPT or your Mac cut it for you.
+Editroom has the pro editing tools you need — color grading, speed ramps, transitions, audio mixing, loudness targets and exports in any shape — in a 7.5 MB app that plays 4K in realtime, with no proxies or buffering. Say what you want and watch Claude, ChatGPT, OpenCode or your Mac cut it for you.
 
 Because it's open source, you can download the Xcode project and add, remove, or modify any feature to fit your workflow.
 
@@ -51,18 +51,20 @@ Say what you want, and watch it get cut. Type a request like *"Make an intro mon
 
 - **Claude** — uses your Claude plan, through the Claude app
 - **ChatGPT** — uses your ChatGPT plan, through ChatGPT or Codex
+- **OpenCode** — uses the providers and models configured in OpenCode
 - **Local** — runs entirely on your Mac with Apple's on-device model, with nothing sent anywhere
 
 Mention a clip with `@` or point at the playhead with `@playhead`. Every Magic edit can be undone.
 
 ### Works with AI agents
-- Claude and ChatGPT can edit an open project directly over MCP, with their own cursor on the timeline. Connect them in Settings › Magic; no API keys needed.
+- Claude, ChatGPT and OpenCode can edit an open project directly over MCP, with their own cursor on the timeline. Connect them in Settings › Magic; no Editroom account or API key needed.
 
 ## Requirements
 
 - macOS 14 or later on a Mac with Apple silicon
 - Magic's Local option needs Apple Intelligence (macOS 26 or later)
 - Magic's Claude and ChatGPT options need the Claude app, or ChatGPT / Codex, signed in to your plan
+- Magic's OpenCode option needs OpenCode installed and signed in to a provider
 - Xcode 26 or later (to build from source)
 
 ## Building

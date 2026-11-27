@@ -2037,6 +2037,119 @@ enum SelfTest {
             log("AGENT CONNECT \(good ? "OK" : "FAIL") \(detail)")
             ok = ok && good
         }
+        // OpenCode: both config generations, JSONC preservation, and a real connect/disconnect against
+        // a throwaway home and CLI. Magic's temporary agent must deny shell and file tools.
+        do {
+            let fm = FileManager.default
+            let launcher = outDir.appendingPathComponent("editroom-mcp")
+            let server2 = try AgentConnect.openCodeServerJSON(launcher: launcher, major: 2)
+            let server1 = try AgentConnect.openCodeServerJSON(launcher: launcher, major: 1)
+            let original2 = """
+            {
+              // Keep this comment and the other server exactly as they are.
+              "model": "opencode/claude-opus-5-5",
+              "mcp": {
+                "servers": {
+                  "other": { "type": "remote", "url": "https://example.com/mcp" },
+                  "editroom": { "type": "local", "command": ["old"] },
+                },
+              },
+              "permissions": [],
+            }
+            """
+            let on2 = try OpenCodeConfig.settingServer(server2, in: original2, major: 2)
+            let off2 = OpenCodeConfig.removingServer(from: on2, major: 2)
+            let json2 = try OpenCodeConfig.jsonObject(on2) as! [String: Any]
+            let mcp2 = json2["mcp"] as! [String: Any]
+            let servers2 = mcp2["servers"] as! [String: Any]
+            let installed2 = servers2["editroom"] as! [String: Any]
+            let timeout2 = installed2["timeout"] as! [String: Int]
+            let preserved2 = on2.contains("// Keep this comment") && on2.contains("https://example.com/mcp")
+                && on2.contains("\"permissions\": []") && !on2.contains("\"old\"")
+            let offJSON2 = try OpenCodeConfig.jsonObject(off2) as! [String: Any]
+            let offServers2 = (offJSON2["mcp"] as! [String: Any])["servers"] as! [String: Any]
+            let config2OK = OpenCodeConfig.serverPresent(on2, major: 2) && !OpenCodeConfig.serverPresent(off2, major: 2)
+                && (installed2["command"] as? [String])?.last == launcher.path && timeout2["execution"] == 300_000
+                && preserved2 && offServers2["other"] != nil && offServers2["editroom"] == nil
+                && offJSON2["model"] as? String == "opencode/claude-opus-5-5"
+
+            // OpenCode 1, including adding the missing mcp object without losing existing settings.
+            let original1 = #"{"model":"x","mcp":{"other":{"type":"local","command":["x"]}},"theme":"dark"}"#
+            let on1 = try OpenCodeConfig.settingServer(server1, in: original1, major: 1)
+            let off1 = OpenCodeConfig.removingServer(from: on1, major: 1)
+            let json1 = try OpenCodeConfig.jsonObject(on1) as! [String: Any]
+            let mcp1 = json1["mcp"] as! [String: Any]
+            let offJSON1 = try OpenCodeConfig.jsonObject(off1) as! [String: Any]
+            let config1OK = OpenCodeConfig.serverPresent(on1, major: 1) && !OpenCodeConfig.serverPresent(off1, major: 1)
+                && mcp1["other"] != nil && mcp1["editroom"] != nil && json1["theme"] as? String == "dark"
+                && offJSON1["theme"] as? String == "dark"
+            let empty = try OpenCodeConfig.settingServer(server2, in: "{}", major: 2)
+            let empty1 = try OpenCodeConfig.settingServer(server1, in: "{}", major: 1)
+            let partial2 = try OpenCodeConfig.settingServer(server2, in: #"{"mcp":{"timeout":{"startup":1000}},"model":"x"}"#, major: 2)
+            let empty1JSON = try OpenCodeConfig.jsonObject(empty1) as! [String: Any]
+            let partial2JSON = try OpenCodeConfig.jsonObject(partial2) as! [String: Any]
+            let partial2MCP = partial2JSON["mcp"] as! [String: Any]
+            let partial2Servers = partial2MCP["servers"] as! [String: Any]
+            let trailing = try OpenCodeConfig.settingServer(server1, in: #"{"mcp":{"editroom":{"type":"local","command":["x"]},}}"#, major: 1)
+            let trailingOff = OpenCodeConfig.removingServer(from: trailing, major: 1)
+            let edgesOK = OpenCodeConfig.serverPresent(empty, major: 2) && OpenCodeConfig.serverPresent(empty1, major: 1)
+                && (empty1JSON["mcp"] as? [String: Any])?["editroom"] != nil
+                && partial2Servers["editroom"] != nil && partial2MCP["timeout"] != nil && partial2JSON["model"] as? String == "x"
+                && !OpenCodeConfig.serverPresent(trailingOff, major: 1)
+                && (try? OpenCodeConfig.jsonObject(trailingOff)) != nil
+                && !OpenCodeConfig.serverPresent(#"{"mcp":{"servers":{"editroom":{"disabled":true}}}}"#, major: 2)
+
+            let magic2 = MagicAgent.openCodeConfigContent(url: "http://127.0.0.1:47920/mcp?draft=test", major: 2)
+            let magic1 = MagicAgent.openCodeConfigContent(url: "http://127.0.0.1:47920/mcp?draft=test", major: 1)
+            let permissions2 = magic2["permissions"] as! [[String: String]]
+            let magic2Servers = (magic2["mcp"] as! [String: Any])["servers"] as! [String: Any]
+            let magic2Server = magic2Servers["editroom"] as! [String: Any]
+            let magic2OK = magic2Server["codemode"] as? Bool == false && magic2Server["oauth"] as? Bool == false
+                && permissions2.contains { $0["action"] == "*" && $0["effect"] == "deny" }
+                && permissions2.contains { $0["action"] == "editroom_*" && $0["effect"] == "allow" }
+                && !permissions2.contains { $0["action"] == "shell" && $0["effect"] == "allow" }
+            let permission1 = magic1["permission"] as! [String: String]
+            let magic1OK = permission1["*"] == "deny" && permission1["editroom_*"] == "allow"
+                && permission1["bash"] != "allow" && permission1["edit"] != "allow"
+            let tabsOK = MagicAgent.Tab.allCases.map(\.rawValue) == ["claude", "chatgpt", "opencode", "local"]
+                && MCPServer.displayName("opencode") == "OpenCode"
+
+            // Exercise AgentConnect's version detection, launcher, backup, status and removal too.
+            let fake = outDir.appendingPathComponent("opencode-home", isDirectory: true)
+            try? fm.removeItem(at: fake)
+            let bin = fake.appendingPathComponent(".opencode/bin", isDirectory: true)
+            try fm.createDirectory(at: bin, withIntermediateDirectories: true)
+            let cli = bin.appendingPathComponent("opencode")
+            try "#!/bin/sh\necho 'opencode v2.4.2'\n".write(to: cli, atomically: true, encoding: .utf8)
+            try fm.setAttributes([.posixPermissions: 0o755], ofItemAtPath: cli.path)
+            let configDir = fake.appendingPathComponent(".config/opencode", isDirectory: true)
+            try fm.createDirectory(at: configDir, withIntermediateDirectories: true)
+            let config = configDir.appendingPathComponent("opencode.json")
+            try original2.write(to: config, atomically: true, encoding: .utf8)
+            let c = AgentConnect.shared
+            let realHome = c.home
+            c.home = fake
+            defer { c.home = realHome }
+            try await c.connectOpenCode()
+            let connected = c.openCodeConnected
+            let written = try String(contentsOf: config, encoding: .utf8)
+            let openCodeLauncher = fake.appendingPathComponent("Library/Application Support/Editroom/Agents/opencode/editroom-mcp")
+            let script = try String(contentsOf: openCodeLauncher, encoding: .utf8)
+            let connectOK = connected && written.contains("// Keep this comment") && script.contains("--from opencode")
+                && fm.fileExists(atPath: configDir.appendingPathComponent("opencode.json.before-editroom").path)
+                && fm.isExecutableFile(atPath: openCodeLauncher.path)
+            try c.disconnectOpenCode()
+            let afterDisconnect = try String(contentsOf: config, encoding: .utf8)
+            let disconnectOK = !c.openCodeConnected && afterDisconnect.contains("https://example.com/mcp")
+
+            let good = config2OK && config1OK && edgesOK && magic2OK && magic1OK && tabsOK && connectOK && disconnectOK
+            let detail = "v2=\(config2OK) v1=\(config1OK) edges=\(edgesOK) magic2=\(magic2OK) magic1=\(magic1OK) tabs=\(tabsOK) connect=\(connectOK) disconnect=\(disconnectOK)"
+            log("OPENCODE \(good ? "OK" : "FAIL") \(detail)")
+            ok = ok && good
+        } catch {
+            log("OPENCODE FAIL \(error.localizedDescription)")
+            ok = false
+        }
         // Downloading music for an agent: audio is kept (with its source noted), anything else refused.
         do {
             let folder = outDir.appendingPathComponent("download-test", isDirectory: true)

@@ -256,7 +256,7 @@ extension ToolbarContent {
 }
 
 
-/// Starts the magic edit. With Claude or ChatGPT on this Mac, it asks what to make first, the AI works
+/// Starts the magic edit. With Claude, ChatGPT or OpenCode on this Mac, it asks what to make first, the AI works
 /// it out in the background, and the swarm plays it onto the timeline. Without one, the swarm builds a
 /// cut on its own. While the AI works, a click stops it.
 struct MagicButton: View {
@@ -284,7 +284,7 @@ struct MagicButton: View {
     }
     private static func sentence(_ s: String) -> String { s.prefix(1).uppercased() + s.dropFirst() }
     private static func clipped(_ s: String) -> String { s.count > 40 ? String(s.prefix(39)) + "…" : s }
-    /// Who's working, in the button: Claude or ChatGPT, or Local for Editroom's own cut.
+    /// Who's working, in the button: Claude, ChatGPT, OpenCode, or Local for Editroom's own cut.
     private var worker: String? {
         if ai.running { return ai.agent?.name }
         return state.busy || state.stage != nil ? "Local" : nil
@@ -383,7 +383,7 @@ struct MagicButton: View {
             connections.refresh()
         }
         .help(working ? "Stop Magic (esc)" : !hasMedia ? "Import some clips first"
-              : "Magic: have Claude or ChatGPT edit, or make a quick cut")
+              : "Magic: have Claude, ChatGPT or OpenCode edit, or make a quick cut")
         // One popover: what to make, or what the AI said when it finished.
         .popover(isPresented: Binding(get: { ai.asking || ai.note != nil },
                                       set: { if !$0 { ai.asking = false; ai.note = nil } }), arrowEdge: .bottom) {

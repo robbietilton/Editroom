@@ -2,7 +2,7 @@ import AppKit
 import SwiftUI
 
 /// The Magic button's popover. A switch (like the timeline's select and cut tools) picks Claude,
-/// ChatGPT or Local. An AI that's ready shows the prompt; one that isn't walks through connecting it
+/// ChatGPT, OpenCode or Local. An AI that's ready shows the prompt; one that isn't walks through connecting it
 /// right here. Disconnecting lives in AI Agents.
 struct MagicPopover: View {
     @ObservedObject var model: EditorModel
@@ -32,7 +32,10 @@ struct MagicPopover: View {
         .padding(14)
         .frame(width: 380)
         .background(Theme.panel)
-        .onAppear { connections.refresh() }
+        .onAppear {
+            connections.refresh()
+            ai.loadOpenCodeModels()
+        }
         .onChange(of: ai.available) { _, now in
             if let k = connecting, now.contains(k) {
                 justConnected = k
@@ -48,15 +51,17 @@ struct MagicPopover: View {
             if justConnected == kind {
                 Centered(logo: AppLogo(kind: kind, size: 36), title: "\(kind.name) is connected",
                          text: kind == .claude ? "Tell it what to make. You can disconnect any time in AI Agents."
-                                               : "Tell it what to make. To edit from the ChatGPT app as well, quit and reopen it once.") {
+                                               : kind == .chatgpt ? "Tell it what to make. To edit from the ChatGPT app as well, quit and reopen it once."
+                                               : "Tell it what to make. You can disconnect any time in AI Agents.") {
                     PillButton(title: "Continue", prominent: true) { justConnected = nil }
                 }
             } else if !ai.installed(kind) {
                 Centered(logo: AppLogo(kind: kind, size: 36), title: "Get the \(kind.name) app",
                          text: kind == .claude ? "Claude edits for you through the Claude app on this Mac. Install it, then come back to connect."
-                                               : "ChatGPT edits for you through Codex in the ChatGPT app on this Mac. Install it, then come back to connect.") {
+                                               : kind == .chatgpt ? "ChatGPT edits for you through Codex in the ChatGPT app on this Mac. Install it, then come back to connect."
+                                               : "OpenCode edits for you through its command-line app on this Mac. Install it, then come back to connect.") {
                     PillButton(title: "Download \(kind.name)", prominent: true) {
-                        if let url = (kind == .claude ? AgentApp.claude : AgentApp.chatgpt).download { NSWorkspace.shared.open(url) }
+                        if let url = AgentApp(rawValue: kind.rawValue)?.download { NSWorkspace.shared.open(url) }
                     }
                 }
             } else if kind == .claude, connections.states[.claude] == .waiting {
@@ -73,16 +78,17 @@ struct MagicPopover: View {
             } else if !ai.connected(kind) {
                 Centered(logo: AppLogo(kind: kind, size: 36), title: "Connect \(kind.name)",
                          text: kind == .claude ? "Let Claude edit for you, with your Claude plan. Nothing is shared until you ask it to make an edit."
-                                               : "Let ChatGPT edit for you, with your ChatGPT plan. It works through Codex in the ChatGPT app.") {
+                                               : kind == .chatgpt ? "Let ChatGPT edit for you, with your ChatGPT plan. It works through Codex in the ChatGPT app."
+                                               : "Let OpenCode edit for you, using the providers and models configured in OpenCode.") {
                     VStack(spacing: 7) {
                         PillButton(title: "Connect \(kind.name)", prominent: true) { connect(kind) }
-                        Text("No API key needed").font(.system(size: 10.5)).foregroundStyle(Theme.textFaint)
+                        Text("No Editroom API key needed").font(.system(size: 10.5)).foregroundStyle(Theme.textFaint)
                     }
                 }
                 if case .failed(let why) = connections.states[app(for: kind)] {
                     Text(why).font(.system(size: 11)).foregroundStyle(Color(hex: 0xE5735C)).frame(maxWidth: .infinity).padding(.top, 6)
                 }
-            } else if !ai.runnable(kind) {
+            } else if kind == .claude, !ai.runnable(kind) {
                 // Connected for use from the Claude app, but Magic runs Claude Code, which the Claude
                 // app installs the first time its Code tab is opened.
                 Centered(logo: AppLogo(kind: kind, size: 36), title: "Open Claude Code once",
@@ -156,6 +162,7 @@ struct MagicPopover: View {
     private func app(for kind: MagicAgent.Kind) -> AgentApp {
         switch kind {
         case .chatgpt: .chatgpt
+        case .opencode: .opencode
         // The Claude app's extension; Claude Code when there's no Claude app.
         case .claude: AgentConnect.appURL(AgentConnect.claudeBundleID) != nil ? .claude : .claudeCode
         }
@@ -185,7 +192,7 @@ struct MagicPopover: View {
 
     private func go(_ kind: MagicAgent.Kind) {
         close()
-        model.addMagicPrompt(request, tab: kind == .claude ? .claude : .chatgpt)
+        model.addMagicPrompt(request, tab: .init(rawValue: kind.rawValue) ?? .local)
         ai.start(request: request, with: kind, model: model)
         request = ""
     }
@@ -193,7 +200,7 @@ struct MagicPopover: View {
 
 // MARK: Pieces
 
-/// Claude, ChatGPT or Local, in the style of the timeline's select and cut switch.
+/// Claude, ChatGPT, OpenCode or Local, in the style of the timeline's select and cut switch.
 private struct AITabs: View {
     @Binding var selection: MagicAgent.Tab
 
@@ -246,7 +253,12 @@ struct AppLogo: View {
     let size: CGFloat
 
     private var icon: NSImage? {
-        let ids = kind == .claude ? [AgentConnect.claudeBundleID] : AgentConnect.chatgptBundleIDs
+        let ids: [String]
+        switch kind {
+        case .claude: ids = [AgentConnect.claudeBundleID]
+        case .chatgpt: ids = AgentConnect.chatgptBundleIDs
+        case .opencode: ids = []
+        }
         guard let url = ids.lazy.compactMap(AgentConnect.appURL).first else { return nil }
         return NSWorkspace.shared.icon(forFile: url.path)
     }
@@ -258,7 +270,7 @@ struct AppLogo: View {
             RoundedRectangle(cornerRadius: size * 0.24, style: .continuous)
                 .fill(kind == .claude ? Color(hex: 0xD97757) : Color(hex: 0xF2F2F0))
                 .frame(width: size, height: size)
-                .overlay(Image(systemName: kind == .claude ? "asterisk" : "circle.dashed")
+                .overlay(Image(systemName: kind == .claude ? "asterisk" : kind == .opencode ? "terminal.fill" : "circle.dashed")
                     .font(.system(size: size * 0.5, weight: .bold))
                     .foregroundStyle(kind == .claude ? .white : .black))
         }
@@ -363,9 +375,11 @@ private struct PromptForm: View {
                 VStack(alignment: .leading, spacing: 5) {
                     HStack(spacing: 5) {
                         ModelChip(ai: ai, kind: kind, manage: manage)
-                        EffortChip(ai: ai, kind: kind)
+                        if !(ai.models(for: kind).first { $0.id == ai.model(for: kind) }?.efforts.isEmpty ?? true) {
+                            EffortChip(ai: ai, kind: kind)
+                        }
                     }
-                    PlanNote(text: "Uses your \(kind.name) plan")
+                    PlanNote(text: kind == .opencode ? "Uses your OpenCode providers" : "Uses your \(kind.name) plan")
                 }
                 Spacer()
                 PillButton(title: "Make it", prominent: true, action: go)
@@ -1290,11 +1304,11 @@ enum LocalMagic {
                 // A question (not about the edit): Local only edits, so it says so and leaves the edit alone.
                 let question = request.contains("?") && recipe.cannotDo.isEmpty
                 MagicAgent.shared.note = MagicAgent.Note(agent: nil, text: question ? """
-                    Local only edits your video, so it left it as it was. To ask a question, use Claude or ChatGPT.
+                    Local only edits your video, so it left it as it was. To ask a question, use Claude, ChatGPT or OpenCode.
                     """ : """
                     Local can't do \(what). It can change the length, the pace, the look, the music, the frame shape \
                     (vertical, square), and which files to use or take out, by name. For anything that needs \
-                    understanding what's in your shots, use Claude or ChatGPT.
+                    understanding what's in your shots, use Claude, ChatGPT or OpenCode.
                     """, changed: false, detail: "On this Mac")
                 if CommandLine.arguments.contains("--magic-local") {
                     FileHandle.standardError.write("MAGIC LOCAL said: (nothing done) \(what)\n".data(using: .utf8)!)

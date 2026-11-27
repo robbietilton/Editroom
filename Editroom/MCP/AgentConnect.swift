@@ -3,13 +3,14 @@ import Foundation
 
 /// The AI apps Editroom can connect to with one click.
 enum AgentApp: String, CaseIterable, Identifiable {
-    case claude, chatgpt, claudeCode
+    case claude, chatgpt, opencode, claudeCode
     var id: String { rawValue }
 
     var title: String {
         switch self {
         case .claude: "Claude"
         case .chatgpt: "ChatGPT"
+        case .opencode: "OpenCode"
         case .claudeCode: "Claude Code"
         }
     }
@@ -19,6 +20,7 @@ enum AgentApp: String, CaseIterable, Identifiable {
         switch self {
         case .claude, .claudeCode: "Claude"
         case .chatgpt: "Codex"
+        case .opencode: "OpenCode"
         }
     }
 
@@ -26,17 +28,19 @@ enum AgentApp: String, CaseIterable, Identifiable {
         switch self {
         case .claude: URL(string: "https://claude.ai/download")
         case .chatgpt: URL(string: "https://chatgpt.com/download")
+        case .opencode: URL(string: "https://opencode.ai/download")
         case .claudeCode: nil
         }
     }
 }
 
-/// Adds Editroom to the Claude app, ChatGPT's Codex and Claude Code, and takes it out again.
+/// Adds Editroom to the Claude app, ChatGPT's Codex, OpenCode and Claude Code, and takes it out again.
 ///
 /// - Claude: Editroom makes a Claude extension (an .mcpb file) and opens it in Claude, which asks the
 ///   person to install it.
 /// - ChatGPT: adds an `[mcp_servers.editroom]` section to Codex's settings (~/.codex/config.toml),
 ///   used by Codex in the ChatGPT app.
+/// - OpenCode: adds Editroom to the global OpenCode JSON/JSONC config, for OpenCode 1 and 2.
 /// - Claude Code: runs `claude mcp add` for this user.
 ///
 /// Every route starts Editroom's own connection program, `Editroom --mcp` (see MCPBridge).
@@ -90,6 +94,9 @@ final class AgentConnect: ObservableObject {
         case .claudeCode:
             if claudeCodeConnected { return .connected }
             return claudeCLI == nil ? .missing : .ready
+        case .opencode:
+            if openCodeConnected { return .connected }
+            return openCodeCLI != nil || FileManager.default.fileExists(atPath: openCodeHome.path) ? .ready : .missing
         }
     }
 
@@ -117,6 +124,7 @@ final class AgentConnect: ObservableObject {
                     if !claudeExtensionInstalled { try connectClaude() }
                 case .chatgpt: try connectCodex()
                 case .claudeCode: try await runClaudeCLI(["mcp", "add", "--scope", "user", "--transport", "http", "editroom", MCPServer.endpoint])
+                case .opencode: try await connectOpenCode()
                 }
                 if app == .claude, openInClaude, !claudeExtensionInstalled {
                     states[app] = .waiting
@@ -140,6 +148,7 @@ final class AgentConnect: ObservableObject {
                     claudeAppOff = true
                 case .chatgpt: try disconnectCodex()
                 case .claudeCode: try await runClaudeCLI(["mcp", "remove", "--scope", "user", "editroom"])
+                case .opencode: try disconnectOpenCode()
                 }
                 states[app] = status(of: app)
             } catch {
@@ -193,7 +202,7 @@ final class AgentConnect: ObservableObject {
         let binary = Bundle.main.executableURL?.path ?? "/Applications/Editroom.app/Contents/MacOS/Editroom"
         return """
         #!/bin/sh
-        # Starts Editroom's connection for AI apps (Claude, ChatGPT's Codex).
+        # Starts Editroom's connection for AI apps (Claude, ChatGPT's Codex, OpenCode).
         app=\(shellQuote(binary))
         if [ ! -x "$app" ]; then
           found=$(/usr/bin/mdfind 'kMDItemCFBundleIdentifier == "\(editroomBundleID)"' | /usr/bin/head -n 1)
@@ -226,7 +235,8 @@ final class AgentConnect: ObservableObject {
         guard !Self.followed, !CommandLine.arguments.contains("--selftest") else { return }
         Self.followed = true
         let fm = FileManager.default
-        var launchers = [(supportFolder.appendingPathComponent("editroom-mcp"), "codex")]
+        var launchers = [(supportFolder.appendingPathComponent("editroom-mcp"), "codex"),
+                         (supportFolder.appendingPathComponent("opencode/editroom-mcp"), "opencode")]
         let extensions = claudeSupport.appendingPathComponent("Claude Extensions", isDirectory: true)
         for item in (try? fm.contentsOfDirectory(at: extensions, includingPropertiesForKeys: nil)) ?? [] {
             if let data = try? Data(contentsOf: item.appendingPathComponent("manifest.json")),
@@ -405,6 +415,134 @@ final class AgentConnect: ObservableObject {
 
     static func tomlString(_ s: String) -> String {
         "\"" + s.replacingOccurrences(of: "\\", with: "\\\\").replacingOccurrences(of: "\"", with: "\\\"") + "\""
+    }
+
+    // MARK: OpenCode (global JSON/JSONC settings)
+
+    var openCodeHome: URL { home.appendingPathComponent(".config/opencode", isDirectory: true) }
+
+    private var openCodeConfigURLs: [URL] {
+        var urls: [URL] = []
+        if let custom = ProcessInfo.processInfo.environment["OPENCODE_CONFIG"], !custom.isEmpty {
+            urls.append(URL(fileURLWithPath: custom))
+        }
+        urls.append(openCodeHome.appendingPathComponent("opencode.json"))
+        urls.append(openCodeHome.appendingPathComponent("opencode.jsonc"))
+        return urls
+    }
+
+    private var openCodeConfig: URL {
+        let urls = openCodeConfigURLs
+        // Match the CLI's normal global file when both exist.
+        return urls.first(where: { $0.lastPathComponent == "opencode.json" && FileManager.default.fileExists(atPath: $0.path) })
+            ?? urls.first(where: { FileManager.default.fileExists(atPath: $0.path) })
+            ?? openCodeHome.appendingPathComponent("opencode.json")
+    }
+
+    var openCodeConnected: Bool {
+        for url in openCodeConfigURLs {
+            guard let text = try? String(contentsOf: url, encoding: .utf8) else { continue }
+            if OpenCodeConfig.serverPresent(text, major: 1) || OpenCodeConfig.serverPresent(text, major: 2) { return true }
+        }
+        return false
+    }
+
+    /// OpenCode's configured default model, when it has one.
+    var openCodeModel: String? {
+        for url in openCodeConfigURLs {
+            guard let text = try? String(contentsOf: url, encoding: .utf8),
+                  let json = try? OpenCodeConfig.jsonObject(text) as? [String: Any] else { continue }
+            if let model = json["model"] as? String, !model.isEmpty { return model }
+            if let model = json["model"] as? [String: Any], let provider = model["providerID"] as? String, let id = model["model"] as? String {
+                var ref = "\(provider)/\(id)"
+                if let variant = model["variant"] as? String, !variant.isEmpty { ref += "#\(variant)" }
+                return ref
+            }
+        }
+        return nil
+    }
+
+    static func openCodeServerJSON(launcher: URL, major: Int) throws -> String {
+        var server: [String: Any] = [
+            "type": "local",
+            "command": ["/bin/sh", launcher.path],
+        ]
+        if major >= 2 {
+            server["timeout"] = ["startup": 30_000, "execution": 300_000]
+        } else {
+            server["enabled"] = true
+            server["timeout"] = 300_000
+        }
+        let data = try JSONSerialization.data(withJSONObject: server, options: [.sortedKeys])
+        return String(decoding: data, as: UTF8.self)
+    }
+
+    func connectOpenCode() async throws {
+        guard let cli = openCodeCLI else { throw ConnectError(message: "OpenCode isn't installed.") }
+        let major = try await openCodeMajorVersion(cli)
+        let fm = FileManager.default
+        let config = openCodeConfig
+        try fm.createDirectory(at: config.deletingLastPathComponent(), withIntermediateDirectories: true)
+        let launcher = try writeLauncher(in: supportFolder.appendingPathComponent("opencode", isDirectory: true), from: "opencode")
+        let existing = (try? String(contentsOf: config, encoding: .utf8)) ?? ""
+        if !existing.isEmpty {
+            let backup = config.deletingLastPathComponent().appendingPathComponent(config.lastPathComponent + ".before-editroom")
+            if !fm.fileExists(atPath: backup.path) { try existing.write(to: backup, atomically: true, encoding: .utf8) }
+        }
+        let server = try Self.openCodeServerJSON(launcher: launcher, major: major)
+        let text = try OpenCodeConfig.settingServer(server, in: existing, major: major)
+        try text.write(to: config, atomically: true, encoding: .utf8)
+    }
+
+    func disconnectOpenCode() throws {
+        for config in openCodeConfigURLs {
+            guard let existing = try? String(contentsOf: config, encoding: .utf8) else { continue }
+            var text = OpenCodeConfig.removingServer(from: existing, major: 1)
+            text = OpenCodeConfig.removingServer(from: text, major: 2)
+            if text != existing { try text.write(to: config, atomically: true, encoding: .utf8) }
+        }
+    }
+
+    /// The `opencode` program, including the curl installer's location and common package managers.
+    var openCodeCLI: URL? {
+        let fm = FileManager.default
+        let h = home.path
+        var known = ["\(h)/.opencode/bin/opencode", "\(h)/.local/bin/opencode", "\(h)/.bun/bin/opencode",
+                     "\(h)/.volta/bin/opencode", "\(h)/.asdf/shims/opencode", "\(h)/.npm-global/bin/opencode",
+                     "/opt/homebrew/bin/opencode", "/usr/local/bin/opencode"]
+        if let path = ProcessInfo.processInfo.environment["PATH"] {
+            known += path.split(separator: ":").map { String($0) + "/opencode" }
+        }
+        return known.first(where: { fm.isExecutableFile(atPath: $0) }).map { URL(fileURLWithPath: $0) }
+    }
+
+    func openCodeMajorVersion(_ cli: URL) async throws -> Int {
+        let result = await runOpenCodeCLI(cli, ["--version"])
+        guard result.0 == 0 else { throw ConnectError(message: "Couldn't find OpenCode's version.") }
+        if let range = result.1.range(of: #"v(\d+)"#, options: .regularExpression),
+           let major = Int(result.1[range].dropFirst()) { return major }
+        throw ConnectError(message: "Couldn't find OpenCode's version.")
+    }
+
+    private func runOpenCodeCLI(_ cli: URL, _ args: [String], timeout: TimeInterval = 15) async -> (Int32, String) {
+        await Task.detached {
+            let p = Process()
+            p.executableURL = cli
+            p.arguments = args
+            var env = ProcessInfo.processInfo.environment
+            env["PATH"] = "/usr/bin:/bin:/usr/sbin:/sbin:/opt/homebrew/bin:/usr/local/bin:" + (env["PATH"] ?? "")
+            p.environment = env
+            let pipe = Pipe()
+            p.standardOutput = pipe
+            p.standardError = pipe
+            DispatchQueue.global().asyncAfter(deadline: .now() + timeout) {
+                if p.isRunning { p.terminate() }
+            }
+            do { try p.run() } catch { return (-1, error.localizedDescription) }
+            let data = pipe.fileHandleForReading.readDataToEndOfFile()
+            p.waitUntilExit()
+            return (p.terminationStatus, String(data: data, encoding: .utf8) ?? "")
+        }.value
     }
 
     // MARK: Claude Code

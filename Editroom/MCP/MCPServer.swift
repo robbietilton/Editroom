@@ -1,10 +1,10 @@
 import Foundation
 import Network
 
-/// Lets AI agents (Claude, ChatGPT's Codex) edit in Editroom using the Model Context Protocol.
+/// Lets AI agents (Claude, ChatGPT's Codex and OpenCode) edit in Editroom using the Model Context Protocol.
 ///
 /// A small HTTP server on this Mac only (127.0.0.1), speaking MCP's Streamable HTTP transport with
-/// plain JSON replies. Claude Code connects to it directly; Claude Desktop and Codex start
+/// plain JSON replies. Claude Code connects to it directly; Claude Desktop, Codex and OpenCode start
 /// `Editroom --mcp`, which passes their messages through (see MCPBridge).
 @MainActor
 final class MCPServer: ObservableObject {
@@ -184,6 +184,7 @@ final class MCPServer: ObservableObject {
         if s.contains("claude") { return "Claude" }
         if s.contains("codex") { return "Codex" }
         if s.contains("chatgpt") || s.contains("openai") { return "ChatGPT" }
+        if s.contains("opencode") { return "OpenCode" }
         let words = raw.replacingOccurrences(of: "-", with: " ").replacingOccurrences(of: "_", with: " ")
         return words.prefix(1).uppercased() + words.dropFirst()
     }

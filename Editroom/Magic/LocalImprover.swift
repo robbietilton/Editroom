@@ -488,7 +488,7 @@ enum LocalImprover {
                         notes.append("""
                             Local could add your sound effects, but it doesn't see a strong moment for them: the cuts don't \
                             change the picture much, and nothing in the shots moves suddenly. Say where you'd like them \
-                            (for example "a whoosh on every cut" or "an impact at the start"), or ask Claude or ChatGPT, \
+                            (for example "a whoosh on every cut" or "an impact at the start"), or ask Claude, ChatGPT or OpenCode, \
                             which can watch the footage
                             """)
                     }

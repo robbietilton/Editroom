@@ -629,6 +629,7 @@ enum MCPTools {
         switch name {
         case "Claude": return NSColor(srgbRed: 0.85, green: 0.47, blue: 0.34, alpha: 1)
         case "Codex", "ChatGPT": return NSColor(srgbRed: 0.06, green: 0.64, blue: 0.50, alpha: 1)
+        case "OpenCode": return NSColor(srgbRed: 0.38, green: 0.65, blue: 0.98, alpha: 1)
         default:
             var h: UInt64 = 1469598103934665603
             for b in name.utf8 { h = (h ^ UInt64(b)) &* 1099511628211 }

@@ -1,32 +1,45 @@
 import AppKit
 import Foundation
 
-/// Magic with an AI: Claude (through Claude Code) or ChatGPT (through Codex, which the ChatGPT app
-/// ships) works out the edit in the background on a hidden draft of the project, using Editroom's
-/// agent tools and the person's own Claude or ChatGPT plan. Nothing moves while it thinks; when it's
+/// Magic with an AI: Claude (through Claude Code), ChatGPT (through Codex, which the ChatGPT app
+/// ships) or OpenCode works out the edit in the background on a hidden draft of the project, using
+/// Editroom's agent tools and the person's own AI account. Nothing moves while it thinks; when it's
 /// done, the Magic swarm plays its edits onto the timeline as one undo step.
 @MainActor
 final class MagicAgent: ObservableObject {
     static let shared = MagicAgent()
 
     enum Kind: String, CaseIterable, Identifiable {
-        case claude, chatgpt
+        case claude, chatgpt, opencode
         var id: String { rawValue }
-        var name: String { self == .claude ? "Claude" : "ChatGPT" }
+        var name: String {
+            switch self {
+            case .claude: "Claude"
+            case .chatgpt: "ChatGPT"
+            case .opencode: "OpenCode"
+            }
+        }
     }
 
     /// The Magic popover's tabs: an AI, or the built-in cut on this Mac.
     enum Tab: String, CaseIterable, Identifiable {
-        case claude, chatgpt, local
+        case claude, chatgpt, opencode, local
         var id: String { rawValue }
-        var kind: Kind? { self == .claude ? .claude : self == .chatgpt ? .chatgpt : nil }
+        var kind: Kind? {
+            switch self {
+            case .claude: .claude
+            case .chatgpt: .chatgpt
+            case .opencode: .opencode
+            case .local: nil
+            }
+        }
         var name: String { kind?.name ?? "Local" }
     }
 
     /// What an AI said when it finished, shown under the Magic button.
     struct Note: Identifiable {
         let id = UUID()
-        /// Who made the edit: Claude or ChatGPT, or nil for Local.
+        /// Who made the edit: Claude, ChatGPT or OpenCode, or nil for Local.
         let agent: Kind?
         let text: String
         /// It changed the timeline (so there's something to undo).
@@ -65,10 +78,15 @@ final class MagicAgent: ObservableObject {
     private var lastMessage = ""
     private var failure: String?
     private var startedServer = false
+    private var openCodeCalls = Set<String>()
+    private var openCodeAssistantMessages = Set<String>()
+    @Published private(set) var openCodeModels: [ModelOption] = []
+    private var loadingOpenCodeModels = false
+    private var loadedOpenCodeModels = false
 
     /// The AIs on this Mac that Magic can use.
     /// Only the AIs connected in AI Agents (and only while AI Agents is on): Claude through the Claude
-    /// app or Claude Code, ChatGPT through Codex.
+    /// app or Claude Code, ChatGPT through Codex, or OpenCode.
     var available: [Kind] { Kind.allCases.filter { connected($0) && runnable($0) } }
 
     /// Connected in AI Agents (or from the Magic popover), with AI Agents on.
@@ -78,12 +96,17 @@ final class MagicAgent: ObservableObject {
         switch kind {
         case .claude: return c.states[.claude] == .connected || c.states[.claudeCode] == .connected
         case .chatgpt: return c.states[.chatgpt] == .connected
+        case .opencode: return c.states[.opencode] == .connected
         }
     }
 
-    /// The program Magic runs is on this Mac: Claude Code, or the Codex that comes with ChatGPT.
+    /// The program Magic runs is on this Mac: Claude Code, Codex, or OpenCode.
     func runnable(_ kind: Kind) -> Bool {
-        kind == .claude ? AgentConnect.shared.claudeCLI != nil : AgentConnect.shared.codexCLI != nil
+        switch kind {
+        case .claude: AgentConnect.shared.claudeCLI != nil
+        case .chatgpt: AgentConnect.shared.codexCLI != nil
+        case .opencode: AgentConnect.shared.openCodeCLI != nil
+        }
     }
 
     /// The app (or its program) is on this Mac at all.
@@ -91,6 +114,7 @@ final class MagicAgent: ObservableObject {
         switch kind {
         case .claude: return AgentConnect.appURL(AgentConnect.claudeBundleID) != nil || AgentConnect.shared.claudeCLI != nil
         case .chatgpt: return AgentConnect.chatgptBundleIDs.contains { AgentConnect.appURL($0) != nil } || AgentConnect.shared.codexCLI != nil
+        case .opencode: return AgentConnect.shared.openCodeCLI != nil
         }
     }
 
@@ -148,6 +172,44 @@ final class MagicAgent: ObservableObject {
                 return ModelOption(id: slug, name: name, efforts: efforts ?? ["low", "medium", "high", "xhigh"],
                                    defaultEffort: m?["default_reasoning_level"] as? String ?? "medium")
             }
+        case .opencode:
+            loadOpenCodeModels()
+            return openCodeModels.isEmpty ? [ModelOption(id: "", name: "OpenCode default", efforts: [], defaultEffort: "")] : openCodeModels
+        }
+    }
+
+    /// OpenCode's own available-model list, with its configured default first. Loaded off the main thread.
+    func loadOpenCodeModels() {
+        guard !loadedOpenCodeModels, !loadingOpenCodeModels, let cli = AgentConnect.shared.openCodeCLI else { return }
+        loadingOpenCodeModels = true
+        Task {
+            let out = await run(cli, ["models"], timeout: 12)
+            let ids = out.split(separator: "\n").map {
+                $0.trimmingCharacters(in: .whitespacesAndNewlines)
+            }.filter { $0.contains("/") && !$0.contains(" ") }
+            var options = ids.map { id -> ModelOption in
+                let parts = id.split(separator: "/", maxSplits: 1)
+                let provider = parts.first.map(String.init) ?? ""
+                let model = parts.last.map(String.init) ?? id
+                let readable = model.replacingOccurrences(of: "-", with: " ")
+                let name = readable.prefix(1).uppercased() + readable.dropFirst()
+                return ModelOption(id: id, name: name, blurb: provider, efforts: [], defaultEffort: "")
+            }
+            let preferred = AgentConnect.shared.openCodeModel
+            if let preferred {
+                if !options.contains(where: { $0.id == preferred }) {
+                    options.insert(ModelOption(id: preferred, name: preferred.split(separator: "/").last.map(String.init) ?? "Default",
+                                               blurb: "Configured default", efforts: [], defaultEffort: ""), at: 0)
+                } else if let index = options.firstIndex(where: { $0.id == preferred }) {
+                    options.move(fromOffsets: IndexSet(integer: index), toOffset: 0)
+                }
+            } else {
+                options.insert(ModelOption(id: "", name: "OpenCode default", blurb: "Configured in OpenCode",
+                                           efforts: [], defaultEffort: ""), at: 0)
+            }
+            openCodeModels = options
+            loadedOpenCodeModels = true
+            loadingOpenCodeModels = false
         }
     }
 
@@ -363,7 +425,12 @@ final class MagicAgent: ObservableObject {
             log("MAGIC AI \(kind.rawValue) isn't connected")
             return
         }
-        let cli: URL? = kind == .claude ? AgentConnect.shared.claudeCLI : AgentConnect.shared.codexCLI
+        let cli: URL?
+        switch kind {
+        case .claude: cli = AgentConnect.shared.claudeCLI
+        case .chatgpt: cli = AgentConnect.shared.codexCLI
+        case .opencode: cli = AgentConnect.shared.openCodeCLI
+        }
         guard let cli else { return }
         self.model = model
         // What they're pointing at, before Magic locks the window and clears the selection.
@@ -385,13 +452,23 @@ final class MagicAgent: ObservableObject {
             }
             guard await signIn(kind, cli) else { return done() }
             guard !stopped, let endpoint = MCPServer.shared.localEndpoint else { return done() }
+            let major: Int
+            if kind == .opencode {
+                do { major = try await AgentConnect.shared.openCodeMajorVersion(cli) }
+                catch {
+                    alert("Couldn't start OpenCode", error.localizedDescription)
+                    return done()
+                }
+            } else {
+                major = 0
+            }
             let d = MCPDraft.open(model.project, model: model)
             d.playhead = pointers.playhead
             draft = d
             status = "\(kind.name) is thinking"
             // The thinking show, driven by its tool calls (see MCPHandler).
-            MagicThinking.begin(model: model, name: kind.name, color: MCPTools.color(for: kind == .claude ? "Claude" : "ChatGPT"))
-            launch(kind, cli, url: "\(endpoint)?draft=\(d.token)", brief: Self.brief(request: request, project: model.project, pointers: pointers))
+            MagicThinking.begin(model: model, name: kind.name, color: MCPTools.color(for: kind.name))
+            launch(kind, cli, url: "\(endpoint)?draft=\(d.token)", brief: Self.brief(request: request, project: model.project, pointers: pointers), openCodeMajor: major)
         }
     }
 
@@ -430,12 +507,22 @@ final class MagicAgent: ObservableObject {
         if await signedIn(kind, cli) { return true }
         let ask = EditroomAlert()
         ask.messageText = "Sign in to \(kind.name)"
-        ask.informativeText = kind == .claude
-            ? "Magic uses Claude through Claude Code on this Mac, with your Claude plan. It needs signing in once, in your browser."
-            : "Magic uses ChatGPT through Codex, which comes with the ChatGPT app, with your ChatGPT plan. It needs signing in once, in your browser."
-        ask.addButton(withTitle: "Sign In")
+        switch kind {
+        case .claude:
+            ask.informativeText = "Magic uses Claude through Claude Code on this Mac, with your Claude plan. It needs signing in once, in your browser."
+        case .chatgpt:
+            ask.informativeText = "Magic uses ChatGPT through Codex, which comes with the ChatGPT app, with your ChatGPT plan. It needs signing in once, in your browser."
+        case .opencode:
+            ask.informativeText = "Magic uses the providers configured in OpenCode. Sign in with opencode auth login in Terminal, then try Magic again."
+        }
+        ask.addButton(withTitle: kind == .opencode ? "Open Terminal" : "Sign In")
         ask.addButton(withTitle: "Cancel")
         guard ask.runModal() == .alertFirstButtonReturn else { return false }
+        if kind == .opencode {
+            openOpenCodeLogin(cli)
+            alert("Finish signing in to OpenCode", "Complete the sign-in in Terminal, then come back and try Magic again.")
+            return false
+        }
         status = "Signing in to \(kind.name)"
         let out = await run(cli, kind == .claude ? ["auth", "login", "--claudeai"] : ["login"])
         guard !stopped else { return false }
@@ -453,11 +540,26 @@ final class MagicAgent: ObservableObject {
         case .chatgpt:
             let out = await run(cli, ["login", "status"])
             return out.localizedCaseInsensitiveContains("logged in") && !out.localizedCaseInsensitiveContains("not logged in")
+        case .opencode:
+            let out = await run(cli, ["auth", "list"], timeout: 12)
+            if let data = out.data(using: .utf8), let json = try? JSONSerialization.jsonObject(with: data) as? [Any], !json.isEmpty { return true }
+            let text = out.trimmingCharacters(in: .whitespacesAndNewlines)
+            return !text.isEmpty && !text.lowercased().contains("no credentials") && !text.lowercased().contains("not authenticated")
         }
     }
 
+    private func openOpenCodeLogin(_ cli: URL) {
+        let command = "'" + cli.path.replacingOccurrences(of: "'", with: "'\\''") + "' auth login"
+        let escaped = command.replacingOccurrences(of: "\\", with: "\\\\").replacingOccurrences(of: "\"", with: "\\\"")
+        let script = "tell application \"Terminal\" to activate\ntell application \"Terminal\" to do script \"\(escaped)\""
+        let p = Process()
+        p.executableURL = URL(fileURLWithPath: "/usr/bin/osascript")
+        p.arguments = ["-e", script]
+        try? p.run()
+    }
+
     /// Runs a program to the end (stoppable) and returns what it printed.
-    private func run(_ cli: URL, _ args: [String]) async -> String {
+    private func run(_ cli: URL, _ args: [String], timeout: TimeInterval? = nil) async -> String {
         let p = Process()
         p.executableURL = cli
         p.arguments = args
@@ -468,6 +570,7 @@ final class MagicAgent: ObservableObject {
         do { try p.run() } catch { return error.localizedDescription }
         process = p
         let data = await Task.detached { () -> Data in
+            if let timeout { DispatchQueue.global().asyncAfter(deadline: .now() + timeout) { if p.isRunning { p.terminate() } } }
             let d = pipe.fileHandleForReading.readDataToEndOfFile()
             p.waitUntilExit()
             return d
@@ -482,7 +585,32 @@ final class MagicAgent: ObservableObject {
         return env
     }
 
-    private func launch(_ kind: Kind, _ cli: URL, url: String, brief: String) {
+    /// A private OpenCode agent: Editroom's MCP tools and the web, with no shell, files or subagents.
+    static func openCodeConfigContent(url: String, major: Int) -> [String: Any] {
+        if major >= 2 {
+            let permissions: [[String: String]] = [
+                ["action": "*", "resource": "*", "effect": "deny"],
+                ["action": "editroom_*", "resource": "*", "effect": "allow"],
+                ["action": "webfetch", "resource": "*", "effect": "allow"],
+                ["action": "websearch", "resource": "*", "effect": "allow"],
+                ["action": "external_directory", "resource": "*", "effect": "allow"],
+            ]
+            let server: [String: Any] = ["type": "remote", "url": url, "oauth": false, "codemode": false,
+                                         "timeout": ["startup": 30_000, "execution": 300_000]]
+            let agent: [String: Any] = ["description": "Edit videos through Editroom's MCP tools.", "mode": "primary", "permissions": permissions]
+            return ["mcp": ["servers": ["editroom": server]], "permissions": permissions, "agents": ["editroom": agent]]
+        }
+        let permission: [String: String] = [
+            "*": "deny", "editroom_*": "allow", "webfetch": "allow", "websearch": "allow", "external_directory": "allow",
+        ]
+        let tools: [String: Bool] = ["editroom_*": true, "webfetch": true, "websearch": true]
+        let server: [String: Any] = ["type": "remote", "url": url, "oauth": false, "enabled": true, "timeout": 300_000]
+        let agent: [String: Any] = ["description": "Edit videos through Editroom's MCP tools.", "mode": "primary",
+                                    "tools": tools, "permission": permission]
+        return ["mcp": ["editroom": server], "tools": tools, "permission": permission, "agent": ["editroom": agent]]
+    }
+
+    private func launch(_ kind: Kind, _ cli: URL, url: String, brief: String, openCodeMajor: Int) {
         let fm = FileManager.default
         // An empty folder of its own, so the AI reads no project's settings or notes.
         let folder = fm.homeDirectoryForCurrentUser.appendingPathComponent("Library/Application Support/Editroom/Magic", isDirectory: true)
@@ -491,6 +619,7 @@ final class MagicAgent: ObservableObject {
         let p = Process()
         p.executableURL = cli
         p.currentDirectoryURL = folder
+        var environment = Self.environment
         switch kind {
         case .claude:
             let config = #"{"mcpServers":{"editroom":{"type":"http","url":"\#(url)"}}}"#
@@ -520,8 +649,26 @@ final class MagicAgent: ObservableObject {
             if !model(for: kind).isEmpty { p.arguments! += ["-m", model(for: kind)] }
             if !effort(for: kind).isEmpty { p.arguments! += ["-c", "model_reasoning_effort=\"\(effort(for: kind))\""] }
             p.arguments! += ["-"]
+        case .opencode:
+            let config = Self.openCodeConfigContent(url: url, major: openCodeMajor)
+            guard let data = try? JSONSerialization.data(withJSONObject: config, options: [.sortedKeys]) else {
+                alert("Couldn't start OpenCode", "Couldn't make OpenCode's temporary settings.")
+                return done()
+            }
+            environment["OPENCODE_CONFIG_CONTENT"] = String(decoding: data, as: UTF8.self)
+            environment["OPENCODE_DISABLE_PROJECT_CONFIG"] = "true"
+            environment["OPENCODE_DISABLE_DEFAULT_PLUGINS"] = "true"
+            environment["OPENCODE_DISABLE_EXTERNAL_SKILLS"] = "true"
+            environment["OPENCODE_DISABLE_CLAUDE_CODE"] = "true"
+            environment["OPENCODE_DISABLE_AUTOUPDATE"] = "true"
+            // V2's shared background service owns configuration; a private server guarantees ours is used.
+            p.arguments = (openCodeMajor >= 2 ? ["--standalone"] : []) + [
+                "run", "--format", "json", "--auto", "--agent", "editroom", "--title", "Editroom Magic",
+            ]
+            if !model(for: kind).isEmpty { p.arguments! += ["--model", model(for: kind)] }
+            p.arguments! += [brief]
         }
-        p.environment = Self.environment
+        p.environment = environment
         let input = Pipe(), output = Pipe(), errors = Pipe()
         p.standardInput = input
         p.standardOutput = output
@@ -531,6 +678,8 @@ final class MagicAgent: ObservableObject {
         errorText = Data()
         lastMessage = ""
         failure = nil
+        openCodeCalls.removeAll()
+        openCodeAssistantMessages.removeAll()
         output.fileHandleForReading.readabilityHandler = { handle in
             let data = handle.availableData
             // At the end, stop listening, or this is called again and again.
@@ -555,8 +704,12 @@ final class MagicAgent: ObservableObject {
             alert("Couldn't start \(kind.name)", error.localizedDescription)
             return done()
         }
-        input.fileHandleForWriting.write(Data(brief.utf8))
-        try? input.fileHandleForWriting.close()
+        if kind == .opencode {
+            try? input.fileHandleForWriting.close()
+        } else {
+            input.fileHandleForWriting.write(Data(brief.utf8))
+            try? input.fileHandleForWriting.close()
+        }
         process = p
     }
 
@@ -570,6 +723,7 @@ final class MagicAgent: ObservableObject {
             switch kind {
             case .claude: readClaude(json)
             case .chatgpt: readCodex(json)
+            case .opencode: readOpenCode(json)
             }
         }
     }
@@ -607,6 +761,52 @@ final class MagicAgent: ObservableObject {
             failure = json["message"] as? String ?? failure
         default: break
         }
+    }
+
+    private func readOpenCode(_ json: [String: Any]) {
+        let type = json["type"] as? String ?? ""
+        let properties = json["properties"] as? [String: Any] ?? [:]
+        switch type {
+        case "message.updated":
+            let info = properties["info"] as? [String: Any] ?? [:]
+            if info["role"] as? String == "assistant", let id = info["id"] as? String { openCodeAssistantMessages.insert(id) }
+        case "message.part.updated":
+            let part = properties["part"] as? [String: Any] ?? [:]
+            let messageID = part["messageID"] as? String ?? ""
+            switch part["type"] as? String {
+            case "text":
+                if openCodeAssistantMessages.contains(messageID), let text = part["text"] as? String, !text.isEmpty {
+                    lastMessage = text
+                }
+            case "tool":
+                let state = part["state"] as? [String: Any] ?? [:]
+                let status = state["status"] as? String ?? ""
+                let call = part["callID"] as? String ?? part["id"] as? String ?? ""
+                if status == "running" || status == "completed", openCodeCalls.insert(call).inserted {
+                    var tool = part["tool"] as? String ?? ""
+                    tool = tool.replacingOccurrences(of: "mcp__editroom__", with: "")
+                    tool = tool.replacingOccurrences(of: "editroom_", with: "")
+                    toolCalled(tool)
+                }
+            default: break
+            }
+        case "session.error":
+            failure = Self.openCodeError(properties["error"]) ?? "OpenCode stopped."
+        case "permission.asked", "permission.v2.asked":
+            failure = "OpenCode asked for permission, which Magic can't approve."
+        case "error":
+            failure = Self.openCodeError(json["error"]) ?? json["message"] as? String ?? failure
+        default: break
+        }
+    }
+
+    private static func openCodeError(_ raw: Any?) -> String? {
+        if let text = raw as? String, !text.isEmpty { return text }
+        guard let error = raw as? [String: Any] else { return nil }
+        if let message = error["message"] as? String, !message.isEmpty { return message }
+        if let data = error["data"] as? [String: Any], let message = data["message"] as? String, !message.isEmpty { return message }
+        if let name = error["name"] as? String { return name }
+        return nil
     }
 
     private func toolCalled(_ tool: String) {

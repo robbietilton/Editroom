@@ -564,7 +564,7 @@ final class EditorModel: ObservableObject {
                 }
                 if args.contains("--magic-ask") {
                     try? await Task.sleep(nanoseconds: 1_500_000_000)
-                    // `--magic-tab claude|chatgpt|local` picks the tab first.
+                    // `--magic-tab claude|chatgpt|opencode|local` picks the tab first.
                     if let k = args.firstIndex(of: "--magic-tab"), args.count > k + 1, let tab = MagicAgent.Tab(rawValue: args[k + 1]) {
                         MagicAgent.shared.tab = tab
                     }
@@ -588,7 +588,7 @@ final class EditorModel: ObservableObject {
                     try? await Task.sleep(nanoseconds: 2_000_000_000)
                     LocalMagic.run(args[k + 1], model: self)
                 }
-                // `--magic-ai claude|chatgpt "request"` (testing): Magic with an AI, logged to stderr.
+                // `--magic-ai claude|chatgpt|opencode "request"` (testing): Magic with an AI, logged to stderr.
                 if let k = args.firstIndex(of: "--magic-ai"), args.count > k + 1,
                    let kind = MagicAgent.Kind(rawValue: args[k + 1]) {
                     try? await Task.sleep(nanoseconds: 2_000_000_000)

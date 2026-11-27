@@ -5,7 +5,7 @@ import Foundation
 enum MagicHistory {
     struct Entry: Codable, Equatable, Hashable, Identifiable {
         var text: String
-        /// The Magic tab it was sent from (claude, chatgpt, local).
+        /// The Magic tab it was sent from (claude, chatgpt, opencode, local).
         var tab: String
         var date: Date
         var id: String { text }

@@ -52,7 +52,7 @@ enum LocalPointed {
             }
         }
         func plural(_ n: Int, _ word: String) -> String { "\(n) \(word)\(n == 1 ? "" : "s")" }
-        let cant = "For anything more, use Claude or ChatGPT."
+        let cant = "For anything more, use Claude, ChatGPT or OpenCode."
 
         // The selected clips.
         if selection {
@@ -297,7 +297,7 @@ extension LocalPointed {
         /// A clip named with @clip:, or the first use of a file.
         func shot(_ id: UUID) -> Clip? { shots.first { $0.id == id } ?? shots.first { $0.assetID == id } }
         for id in ids.prefix(2) where p.clips.contains(where: { $0.id == id }) && shot(id) == nil {
-            return Outcome(said: "Local can only move shots on the main video track, and \(name(id)) isn't one. For that, use Claude or ChatGPT.")
+            return Outcome(said: "Local can only move shots on the main video track, and \(name(id)) isn't one. For that, use Claude, ChatGPT or OpenCode.")
         }
         guard let a = shot(ids[0]) else { return Outcome(said: "\(name(ids[0])) isn't in the edit, so there's nothing to move.") }
         var order = shots
