@@ -38,13 +38,8 @@ struct SettingsView: View {
             .frame(maxWidth: .infinity)
             Divider().overlay(Theme.stroke)
 
+            // Each tab is a page: its title is the first thing in it and scrolls away with the rest.
             VStack(alignment: .leading, spacing: 0) {
-                Text(tab.rawValue)
-                    .font(.system(size: 20, weight: .semibold))
-                    .foregroundStyle(Theme.text)
-                    .padding(.horizontal, 24)
-                    .padding(.top, 20)
-                    .padding(.bottom, 4)
                 switch tab {
                 case .general: GeneralSettings()
                 case .shortcuts: ShortcutSettings()
@@ -81,6 +76,19 @@ struct SettingsView: View {
     }
 }
 
+/// A settings page's name, at the top of what scrolls (the tab above already says where you are).
+private struct PageTitle: View {
+    let text: String
+    init(_ text: String) { self.text = text }
+    var body: some View {
+        Text(text)
+            .font(.system(size: 20, weight: .semibold))
+            .foregroundStyle(Theme.text)
+            .padding(.top, 4)
+            .padding(.bottom, 16)
+    }
+}
+
 private struct SectionLabel: View {
     let text: String
     var body: some View {
@@ -98,6 +106,9 @@ private struct GeneralSettings: View {
     @AppStorage(EditorModel.autosaveKey) private var autosave = true
 
     var body: some View {
+        ScrollView {
+        VStack(alignment: .leading, spacing: 0) {
+        PageTitle("General")
         VStack(alignment: .leading, spacing: 18) {
             SettingsSection("Theme") {
                 HStack(alignment: .top, spacing: 10) {
@@ -130,9 +141,10 @@ private struct GeneralSettings: View {
                 }
             }
         }
-        .padding(.horizontal, 22)
-        .padding(.top, 14)
-        .padding(.bottom, 22)
+        }
+        .padding(.horizontal, 24)
+        .padding(.vertical, 16)
+        }
     }
 }
 
@@ -384,21 +396,20 @@ private struct ShortcutSettings: View {
 
     var body: some View {
         VStack(spacing: 0) {
-            HStack(spacing: 8) {
-                Image(systemName: "magnifyingglass").font(.system(size: 11)).foregroundStyle(Theme.textFaint)
-                TextField("Search shortcuts", text: $search)
-                    .textFieldStyle(.plain)
-                    .font(.system(size: 12.5))
-                    .foregroundStyle(Theme.text)
-            }
-            .padding(.horizontal, 10)
-            .frame(height: 30)
-            .background(RoundedRectangle(cornerRadius: 8, style: .continuous).fill(Theme.field))
-            .padding(.horizontal, 24)
-            .padding(.top, 12)
-            .padding(.bottom, 4)
-
             ScrollView {
+              VStack(alignment: .leading, spacing: 0) {
+                PageTitle("Shortcuts")
+                HStack(spacing: 8) {
+                    Image(systemName: "magnifyingglass").font(.system(size: 11)).foregroundStyle(Theme.textFaint)
+                    TextField("Search shortcuts", text: $search)
+                        .textFieldStyle(.plain)
+                        .font(.system(size: 12.5))
+                        .foregroundStyle(Theme.text)
+                }
+                .padding(.horizontal, 10)
+                .frame(height: 30)
+                .background(RoundedRectangle(cornerRadius: 8, style: .continuous).fill(Theme.field))
+                .padding(.bottom, 16)
                 VStack(alignment: .leading, spacing: 18) {
                     ForEach(ShortcutAction.Group.allCases, id: \.self) { group in
                         let actions = ShortcutAction.allCases.filter { $0.group == group && matches($0) }
@@ -418,8 +429,9 @@ private struct ShortcutSettings: View {
                         }
                     }
                 }
-                .padding(.horizontal, 24)
-                .padding(.vertical, 12)
+              }
+              .padding(.horizontal, 24)
+              .padding(.vertical, 16)
             }
 
             Divider().overlay(Theme.stroke)
@@ -538,6 +550,8 @@ private struct MagicSettings: View {
 
     var body: some View {
         ScrollView {
+          VStack(alignment: .leading, spacing: 0) {
+            PageTitle("Magic")
             VStack(alignment: .leading, spacing: 22) {
                 VStack(alignment: .leading, spacing: 8) {
                     SectionLabel(text: "Magic")
@@ -598,8 +612,9 @@ private struct MagicSettings: View {
                     }
                 }
             }
-            .padding(.horizontal, 24)
-            .padding(.vertical, 16)
+          }
+          .padding(.horizontal, 24)
+          .padding(.vertical, 16)
         }
         .onAppear { connect.refresh() }
         // Back from Claude or ChatGPT: see what changed.
@@ -784,6 +799,8 @@ private struct UpdateSettings: View {
 
     var body: some View {
         ScrollView {
+          VStack(alignment: .leading, spacing: 0) {
+            PageTitle("Updates")
             VStack(alignment: .leading, spacing: 16) {
                 Card(title: "Software Update") {
                     VStack(alignment: .leading, spacing: 12) {
@@ -817,8 +834,9 @@ private struct UpdateSettings: View {
                     }
                 }
             }
-            .padding(.horizontal, 24)
-            .padding(.vertical, 16)
+          }
+          .padding(.horizontal, 24)
+          .padding(.vertical, 16)
         }
     }
 
