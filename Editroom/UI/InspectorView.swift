@@ -569,9 +569,12 @@ struct InspectorView: View {
         InspectorSection("Grade", action: grade.isNeutral ? nil : ("Reset", { once { $0 = ColorGrade() } }),
                          collapsedByDefault: true, marked: !grade.isNeutral) {
             HStack(alignment: .top, spacing: 0) {
-                ColorWheel(title: "Shadows", point: grade.shadows, onChange: { pt in live { $0.shadows = pt } }, onEnd: { model.commitLive() })
-                ColorWheel(title: "Midtones", point: grade.midtones, onChange: { pt in live { $0.midtones = pt } }, onEnd: { model.commitLive() })
-                ColorWheel(title: "Highlights", point: grade.highlights, onChange: { pt in live { $0.highlights = pt } }, onEnd: { model.commitLive() })
+                ColorWheel(title: "Shadows", point: grade.shadows, level: grade.shadowsLevel,
+                           onChange: { pt in live { $0.shadows = pt } }, onLevel: { v in live { $0.shadowsLevel = v } }, onEnd: { model.commitLive() })
+                ColorWheel(title: "Midtones", point: grade.midtones, level: grade.midtonesLevel,
+                           onChange: { pt in live { $0.midtones = pt } }, onLevel: { v in live { $0.midtonesLevel = v } }, onEnd: { model.commitLive() })
+                ColorWheel(title: "Highlights", point: grade.highlights, level: grade.highlightsLevel,
+                           onChange: { pt in live { $0.highlights = pt } }, onLevel: { v in live { $0.highlightsLevel = v } }, onEnd: { model.commitLive() })
             }
             .padding(.vertical, 4)
             ParamRow(icon: .symbol("sun.max"), label: "Exposure", value: grade.exposure, range: -2...2,
@@ -1301,17 +1304,22 @@ private struct FrameSizeFields: View {
 private struct ColorWheel: View {
     let title: String
     let point: WheelPoint
+    /// The range's brightness, -100...100, on the hairline under the wheel.
+    let level: Double
     let onChange: (WheelPoint) -> Void
+    let onLevel: (Double) -> Void
     let onEnd: () -> Void
     @State private var hovering = false
     @State private var dragging = false
+    /// The brightness hairline is being dragged: its number stays up, even passing through zero.
+    @State private var levelDragging = false
 
     private static let size: CGFloat = 78
 
     var body: some View {
         let s = Self.size
         let active = point.x != 0 || point.y != 0
-        VStack(spacing: 7) {
+        VStack(spacing: 4) {
             ZStack {
                 Circle().fill(Theme.field)
                 // Hue ring: red at 0°, green at 120°, blue at 240°, matching the direction the puck tints.
@@ -1351,12 +1359,78 @@ private struct ColorWheel: View {
                 onChange(WheelPoint())
                 onEnd()
             })
-            Text(title)
-                .font(.system(size: 11.5))
-                .foregroundStyle(active ? Theme.text : Theme.textDim)
+            .help("Drag to tint \(title.lowercased()). Double-click to reset.")
+            LevelLine(level: level, dragging: $levelDragging, onChange: onLevel, onEnd: onEnd)
+                .padding(.top, 3)
+                .help("Drag to brighten or darken the \(title.lowercased()). Double-click to reset.")
+            // The level beside the name once it's moved (and while it's being dragged), so a neutral grade stays
+            // quiet. Its own fixed width, wide enough for "-100": the name moves once when it appears, and stays
+            // put as the digits change.
+            HStack(spacing: 4) {
+                Text(title)
+                    .font(.system(size: 11.5))
+                    .foregroundStyle(active || level != 0 ? Theme.text : Theme.textDim)
+                if level != 0 || levelDragging {
+                    Text(level == 0 ? "0" : (level > 0 ? "+" : "") + "\(Int(level))")
+                        .font(Theme.mono(10.5))
+                        .foregroundStyle(Theme.textDim)
+                        .frame(width: 27, alignment: .leading)
+                }
+            }
         }
         .frame(maxWidth: .infinity)
-        .help("Drag to tint \(title.lowercased()). Double-click to reset.")
+    }
+}
+
+/// Under a colour wheel: its range's brightness on a hairline, zero marked in the middle. Drag to set,
+/// double-click to reset.
+private struct LevelLine: View {
+    let level: Double
+    @Binding var dragging: Bool
+    let onChange: (Double) -> Void
+    let onEnd: () -> Void
+    @State private var hovering = false
+
+    private static let width: CGFloat = 66
+
+    var body: some View {
+        let w = Self.width
+        let x = w / 2 + CGFloat(level / 100) * w / 2
+        ZStack(alignment: .leading) {
+            Rectangle().fill(Theme.ink.opacity(0.14)).frame(width: w, height: 1)
+            Rectangle().fill(Theme.ink.opacity(0.3)).frame(width: 1, height: 6).offset(x: w / 2 - 0.5)
+            Capsule().fill(Theme.text.opacity(0.75))
+                .frame(width: abs(x - w / 2), height: 2)
+                .offset(x: min(x, w / 2))
+            Circle()
+                .fill(Theme.text)
+                .frame(width: 8, height: 8)
+                .scaleEffect(dragging || hovering ? 1.2 : 1)
+                .offset(x: x - 4)
+        }
+        .frame(width: w, height: 14)
+        .contentShape(Rectangle())
+        .onHover { hovering = $0 }
+        .animation(.easeOut(duration: 0.12), value: hovering)
+        .gesture(
+            DragGesture(minimumDistance: 0)
+                .onChanged { v in
+                    dragging = true
+                    var value = (Double(v.location.x / w) * 2 - 1) * 100
+                    value = min(100, max(-100, value)).rounded()
+                    // A small dead zone makes it easy to land exactly on zero.
+                    if abs(value) < 3 { value = 0 }
+                    onChange(value)
+                }
+                .onEnded { _ in
+                    dragging = false
+                    onEnd()
+                }
+        )
+        .simultaneousGesture(TapGesture(count: 2).onEnded {
+            onChange(0)
+            onEnd()
+        })
     }
 }
 

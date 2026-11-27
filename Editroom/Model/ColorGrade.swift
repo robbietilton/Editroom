@@ -19,6 +19,11 @@ struct ColorGrade: Codable, Hashable {
     var shadows = WheelPoint()
     var midtones = WheelPoint()
     var highlights = WheelPoint()
+    /// Brightness of each range, -100...100: the darks lifted or crushed, the middle raised or lowered, the
+    /// brights pulled down or pushed up, each without moving the others much.
+    var shadowsLevel = 0.0
+    var midtonesLevel = 0.0
+    var highlightsLevel = 0.0
 
     /// No look and every adjustment at zero. The look's strength doesn't count without a look (it isn't
     /// shown then, and a look taken away can leave it behind).
@@ -33,6 +38,30 @@ struct ColorGrade: Codable, Hashable {
         if BuiltInLook.named(look) != nil { return look }
         return URL(fileURLWithPath: look).deletingPathExtension().lastPathComponent
     }
+}
+
+extension ColorGrade {
+    /// Read field by field, each left at its default when a project doesn't have it (saved before it existed).
+    init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        func v<T: Decodable>(_ key: CodingKeys, _ fallback: T) throws -> T { try c.decodeIfPresent(T.self, forKey: key) ?? fallback }
+        look = try c.decodeIfPresent(String.self, forKey: .look)
+        lookIntensity = try v(.lookIntensity, 1.0)
+        exposure = try v(.exposure, 0.0)
+        contrast = try v(.contrast, 0.0)
+        saturation = try v(.saturation, 0.0)
+        temperature = try v(.temperature, 0.0)
+        tint = try v(.tint, 0.0)
+        shadows = try v(.shadows, WheelPoint())
+        midtones = try v(.midtones, WheelPoint())
+        highlights = try v(.highlights, WheelPoint())
+        shadowsLevel = try v(.shadowsLevel, 0.0)
+        midtonesLevel = try v(.midtonesLevel, 0.0)
+        highlightsLevel = try v(.highlightsLevel, 0.0)
+    }
+
+    /// A level as the even (grey) offset it adds across its range: ±100 is ±0.2, as far as a wheel's colour goes.
+    static func levelOffset(_ level: Double) -> Double { min(100, max(-100, level)) / 100 * 0.2 }
 }
 
 struct WheelPoint: Codable, Hashable {
@@ -290,6 +319,8 @@ enum GradeBaker {
         return lut
     }
 
+    private static func plus(_ c: (Double, Double, Double), _ v: Double) -> (Double, Double, Double) { (c.0 + v, c.1 + v, c.2 + v) }
+
     /// RGBA float data for CIColorCube, or nil when the grade changes nothing.
     static func cube(for grade: ColorGrade?) -> Data? {
         guard let grade, !grade.isNeutral else { return nil }
@@ -303,7 +334,9 @@ enum GradeBaker {
         }
         let user = GradeRecipe(exposure: grade.exposure, contrast: grade.contrast, saturation: grade.saturation,
                                temperature: grade.temperature, tint: grade.tint,
-                               shadows: grade.shadows.offset, midtones: grade.midtones.offset, highlights: grade.highlights.offset)
+                               shadows: Self.plus(grade.shadows.offset, ColorGrade.levelOffset(grade.shadowsLevel)),
+                               midtones: Self.plus(grade.midtones.offset, ColorGrade.levelOffset(grade.midtonesLevel)),
+                               highlights: Self.plus(grade.highlights.offset, ColorGrade.levelOffset(grade.highlightsLevel)))
         let mix = min(1, max(0, grade.lookIntensity))
         let n = dimension
         var data = [Float](repeating: 1, count: n * n * n * 4)

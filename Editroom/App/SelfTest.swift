@@ -1411,6 +1411,26 @@ enum SelfTest {
             log("GAPS+PASTE \(closed && all && pasteOK ? "OK" : "FAIL") gap=\(closed) all=\(all) paste=\(pasteOK)")
             ok = ok && closed && all && pasteOK
         }
+        // Brightness of each range: a project from before has none (and still opens), lifting the shadows brightens
+        // the darks more than the brights, pulling the highlights down darkens the brights more, and it's kept.
+        do {
+            let old = try? JSONDecoder().decode(ColorGrade.self, from: Data(#"{"exposure":0.5,"lookIntensity":1}"#.utf8))
+            let opens = old?.exposure == 0.5 && old?.shadowsLevel == 0 && old?.highlightsLevel == 0
+            func grey(_ g: ColorGrade, _ v: Int) -> Float {
+                guard let data = GradeBaker.cube(for: g) else { return Float(v) / Float(GradeBaker.dimension - 1) }
+                let n = GradeBaker.dimension
+                return data.withUnsafeBytes { $0.bindMemory(to: Float.self)[((v * n + v) * n + v) * 4] }
+            }
+            let n = GradeBaker.dimension, dark = n / 8, light = n * 7 / 8
+            var lows = ColorGrade(); lows.shadowsLevel = 60
+            var highs = ColorGrade(); highs.highlightsLevel = -60
+            let base = ColorGrade()
+            let lifted = grey(lows, dark) - grey(base, dark) > grey(lows, light) - grey(base, light) + 0.01
+            let pulled = grey(base, light) - grey(highs, light) > grey(base, dark) - grey(highs, dark) + 0.01
+            let kept = (try? JSONDecoder().decode(ColorGrade.self, from: JSONEncoder().encode(lows)))?.shadowsLevel == 60
+            log("GRADE LEVELS \(opens && lifted && pulled && kept ? "OK" : "FAIL") opens=\(opens) lifted=\(lifted) pulled=\(pulled) kept=\(kept)")
+            ok = ok && opens && lifted && pulled && kept
+        }
         // Overwriting into the middle of a clip with its sound: both halves keep their sound linked. Over the
         // picture only, the right half of the picture stands alone.
         do {

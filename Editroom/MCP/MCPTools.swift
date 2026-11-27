@@ -97,7 +97,10 @@ enum MCPTools {
             tool("set_grade", "Set grade", "Colour for video, photo and title clips. Leave out what shouldn't change.",
                  ["clip_ids": ["type": "array", "items": ["type": "string"]], "look": str("A look from list_looks, a .cube file path, or \"none\"."),
                   "look_intensity": num("0...1."), "exposure": num("Stops, -2...2."), "contrast": num("-50...50."), "saturation": num("-100...100."),
-                  "temperature": num("-50...50, negative is cooler."), "tint": num("-50...50, positive is toward magenta.")], required: ["clip_ids"]),
+                  "temperature": num("-50...50, negative is cooler."), "tint": num("-50...50, positive is toward magenta."),
+                  "shadows_level": num("Brightness of the darks, -100...100: lift (positive) or crush them, the rest barely moves."),
+                  "midtones_level": num("Brightness of the middle tones, -100...100, like gamma."),
+                  "highlights_level": num("Brightness of the brights, -100...100: pull them down (negative) or push them up.")], required: ["clip_ids"]),
             tool("list_looks", "List looks", "The built-in looks for set_grade.", readOnly: true),
             tool("set_audio", "Set level and fades", "A clip's sound level, and its fades: a sound clip's fade its sound, a video, photo, title or solid's fade its picture (in from black, out to black).", ["clip_id": str("A clip's id."), "gain_db": num("Sound level in dB, -60...12."), "fade_in": num("Seconds."), "fade_out": num("Seconds.")], required: ["clip_id"]),
             tool("set_transition", "Set transition", "A transition into a clip from the clip that ends where it starts on the same track.", ["clip_id": str("The later clip's id."), "kind": ["type": "string", "enum": ["dissolve", "dipToBlack", "wipe", "none"]], "duration": num("Seconds (default 0.5).")], required: ["clip_id", "kind"]),
@@ -459,14 +462,18 @@ enum MCPTools {
                     if let v = args[field] as? Double { edits.append(.grade(id, key, to: v.clamped(to: key.range))) }
                 }
                 let intensity = args["look_intensity"] as? Double, temp = args["temperature"] as? Double, tint = args["tint"] as? Double
-                if intensity != nil || temp != nil || tint != nil {
+                let lows = args["shadows_level"] as? Double, mids = args["midtones_level"] as? Double, highs = args["highlights_level"] as? Double
+                if intensity != nil || temp != nil || tint != nil || lows != nil || mids != nil || highs != nil {
                     edits.append(.change(id, "Colour") { proj in
                         guard let i = proj.index(of: id) else { return }
                         var g = proj.clips[i].grade ?? ColorGrade()
                         if let intensity { g.lookIntensity = intensity.clamped(to: 0...1) }
                         if let temp { g.temperature = temp.clamped(to: -50...50) }
                         if let tint { g.tint = tint.clamped(to: -50...50) }
-                        proj.clips[i].grade = g
+                        if let lows { g.shadowsLevel = lows.clamped(to: -100...100) }
+                        if let mids { g.midtonesLevel = mids.clamped(to: -100...100) }
+                        if let highs { g.highlightsLevel = highs.clamped(to: -100...100) }
+                        proj.clips[i].grade = g.isNeutral ? nil : g
                     })
                 }
             }
@@ -776,7 +783,8 @@ enum MCPTools {
             var gd: [String: Any] = [:]
             if let look = g.look { gd["look"] = g.lookLabel; if look != g.lookLabel { gd["look_file"] = look } }
             if g.lookIntensity != 1 { gd["look_intensity"] = g.lookIntensity }
-            for (k, v) in [("exposure", g.exposure), ("contrast", g.contrast), ("saturation", g.saturation), ("temperature", g.temperature), ("tint", g.tint)] where v != 0 {
+            for (k, v) in [("exposure", g.exposure), ("contrast", g.contrast), ("saturation", g.saturation), ("temperature", g.temperature), ("tint", g.tint),
+                           ("shadows_level", g.shadowsLevel), ("midtones_level", g.midtonesLevel), ("highlights_level", g.highlightsLevel)] where v != 0 {
                 gd[k] = round3(v)
             }
             d["grade"] = gd
