@@ -3,15 +3,18 @@
   <channel>
     <title>Editroom</title>
     <item>
-      <title>Version 1.0.11</title>
-      <pubDate>Fri, 27 Nov 2026 01:39:54 +0000</pubDate>
-      <sparkle:version>12</sparkle:version>
-      <sparkle:shortVersionString>1.0.11</sparkle:shortVersionString>
+      <title>Version 1.0.12</title>
+      <pubDate>Fri, 27 Nov 2026 17:09:26 +0000</pubDate>
+      <sparkle:version>13</sparkle:version>
+      <sparkle:shortVersionString>1.0.12</sparkle:shortVersionString>
       <sparkle:minimumSystemVersion>14.0</sparkle:minimumSystemVersion>
-      <link>https://github.com/robbietilton/Editroom/releases/tag/v1.0.11</link>
-      <changes><![CDATA[Fixed Editroom opening on its own when ChatGPT or Claude is running.
-Viewer: square corners to match exports.]]></changes>
-      <enclosure url="https://github.com/robbietilton/Editroom/releases/download/v1.0.11/Editroom.dmg" sparkle:edSignature="mwPqIdcvA7Z2+FVGMb/2tM9UnDnzXyOfjr/ivw3iOmwWt+N+FJU8oyqAyVdCmUlYIfdUm8kdK3qKtaOxWdxzDg==" length="12238527" type="application/octet-stream"/>
+      <link>https://github.com/robbietilton/Editroom/releases/tag/v1.0.12</link>
+      <changes><![CDATA[Grade: brightness for shadows, midtones and highlights, and an eye to switch a clip's grade off and on.
+Transcription: choose the speech language in Settings › General, and you're told when a language can't be transcribed.
+Timeline: Option-dragging a clip to copy it now snaps to the original.
+Smoother with big projects: importing lots of media at once no longer slows playback and export.
+Settings and captions: tidier layout, with section titles that scroll and matching eye toggles.]]></changes>
+      <enclosure url="https://github.com/robbietilton/Editroom/releases/download/v1.0.12/Editroom.dmg" sparkle:edSignature="89W7UIrGPgTLPCo4GsGb291+YWKnsXmBo8NPcA4Aqdzl11C/+tsk44gDUvGjYlITvobXF1defaht6eO1S1ZRBw==" length="12326519" type="application/octet-stream"/>
     </item>
   </channel>
 </rss>
