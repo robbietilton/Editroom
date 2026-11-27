@@ -3,18 +3,17 @@
   <channel>
     <title>Editroom</title>
     <item>
-      <title>Version 1.0.12</title>
-      <pubDate>Fri, 27 Nov 2026 17:09:26 +0000</pubDate>
-      <sparkle:version>13</sparkle:version>
-      <sparkle:shortVersionString>1.0.12</sparkle:shortVersionString>
+      <title>Version 1.1</title>
+      <pubDate>Fri, 27 Nov 2026 22:34:04 +0000</pubDate>
+      <sparkle:version>14</sparkle:version>
+      <sparkle:shortVersionString>1.1</sparkle:shortVersionString>
       <sparkle:minimumSystemVersion>14.0</sparkle:minimumSystemVersion>
-      <link>https://github.com/robbietilton/Editroom/releases/tag/v1.0.12</link>
-      <changes><![CDATA[Grade: brightness for shadows, midtones and highlights, and an eye to switch a clip's grade off and on.
-Transcription: choose the speech language in Settings › General, and you're told when a language can't be transcribed.
-Timeline: Option-dragging a clip to copy it now snaps to the original.
-Smoother with big projects: importing lots of media at once no longer slows playback and export.
-Settings and captions: tidier layout, with section titles that scroll and matching eye toggles.]]></changes>
-      <enclosure url="https://github.com/robbietilton/Editroom/releases/download/v1.0.12/Editroom.dmg" sparkle:edSignature="89W7UIrGPgTLPCo4GsGb291+YWKnsXmBo8NPcA4Aqdzl11C/+tsk44gDUvGjYlITvobXF1defaht6eO1S1ZRBw==" length="12326519" type="application/octet-stream"/>
+      <link>https://github.com/robbietilton/Editroom/releases/tag/v1.1</link>
+      <changes><![CDATA[Tabs: open several projects in one window. ⌘T opens a new tab, ⌘W closes one, and ⇧⌘[ / ⇧⌘] switch between them.
+Copy and paste: clips pasted into another project bring their media with them.
+HDR: projects can now be HDR, keeping bright highlights in the viewer and in exports. Turn it on in the Dynamic range section of the Inspector.
+Shortcuts: Add Text is now ⌃T, and File > New opens a new tab.]]></changes>
+      <enclosure url="https://github.com/robbietilton/Editroom/releases/download/v1.1/Editroom.dmg" sparkle:edSignature="ahXLYnF2rJvmi3MkOho9ImzSvyfFYoR1yrM/AnCkTUmXUh13ZLwtoUT4FTGxiMy/RgJfaZPztOWeL3SPNtFQBg==" length="12452906" type="application/octet-stream"/>
     </item>
   </channel>
 </rss>
