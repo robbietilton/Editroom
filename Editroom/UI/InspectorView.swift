@@ -203,8 +203,7 @@ struct InspectorView: View {
                 Button("SDR (Rec. 709)") { model.setHDR(false) }
                 Button("HDR (HLG)") { model.setHDR(true) }
             }
-            Text(p.isHDR ? "HDR footage keeps its brighter highlights in the viewer and the export (10-bit HEVC). SDR footage and titles stay at normal white."
-                         : "HDR footage is converted to SDR, as it is everywhere it's shared in SDR.")
+            Text(p.isHDR ? "HDR footage keeps its bright highlights and exports as 10\u{2011}bit HEVC." : "HDR footage is converted to SDR.")
                 .font(.system(size: 10))
                 .foregroundStyle(Theme.textFaint)
                 .fixedSize(horizontal: false, vertical: true)
