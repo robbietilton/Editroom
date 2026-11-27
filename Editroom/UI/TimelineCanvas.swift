@@ -1792,12 +1792,18 @@ final class TimelineCanvas: NSView {
             ctx.saveGState()
             ctx.clip(to: CGRect(x: r.minX, y: r.minY, width: max(0, r.width - 16), height: 18))
             (label as NSString).draw(at: CGPoint(x: lx, y: r.minY + 2.5), withAttributes: Self.labelAttrs)
-            // A graded clip says so, and which Look: "● Warm film", or "● Graded" for adjustments only.
+            // A graded clip says so, and which Look: "● Warm film", or "● Graded" for adjustments only. A grade
+            // that's off is still there, faint and struck through, so it isn't forgotten.
             if let grade = c.grade, !grade.isNeutral, c.kind != .audio {
                 let x = lx + (label as NSString).size(withAttributes: Self.labelAttrs).width + 9
+                ctx.saveGState()
+                if grade.off { ctx.setAlpha(0.45) }
                 drawGradeWheel(center: CGPoint(x: x + 4.5, y: r.minY + 9.5), radius: 4.5, ctx: ctx)
                 let tag = grade.look != nil ? grade.lookLabel : "Graded"
-                (tag as NSString).draw(at: CGPoint(x: x + 13, y: r.minY + 2.5), withAttributes: Self.labelAttrs)
+                var attrs = Self.labelAttrs
+                if grade.off { attrs[.strikethroughStyle] = NSUnderlineStyle.single.rawValue }
+                (tag as NSString).draw(at: CGPoint(x: x + 13, y: r.minY + 2.5), withAttributes: attrs)
+                ctx.restoreGState()
             }
             ctx.restoreGState()
         }

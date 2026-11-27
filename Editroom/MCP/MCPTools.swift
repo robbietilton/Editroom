@@ -100,7 +100,8 @@ enum MCPTools {
                   "temperature": num("-50...50, negative is cooler."), "tint": num("-50...50, positive is toward magenta."),
                   "shadows_level": num("Brightness of the darks, -100...100: lift (positive) or crush them, the rest barely moves."),
                   "midtones_level": num("Brightness of the middle tones, -100...100, like gamma."),
-                  "highlights_level": num("Brightness of the brights, -100...100: pull them down (negative) or push them up.")], required: ["clip_ids"]),
+                  "highlights_level": num("Brightness of the brights, -100...100: pull them down (negative) or push them up."),
+                  "enabled": ["type": "boolean", "description": "false switches the grade off without losing it (not shown or exported); true switches it back on."]], required: ["clip_ids"]),
             tool("list_looks", "List looks", "The built-in looks for set_grade.", readOnly: true),
             tool("set_audio", "Set level and fades", "A clip's sound level, and its fades: a sound clip's fade its sound, a video, photo, title or solid's fade its picture (in from black, out to black).", ["clip_id": str("A clip's id."), "gain_db": num("Sound level in dB, -60...12."), "fade_in": num("Seconds."), "fade_out": num("Seconds.")], required: ["clip_id"]),
             tool("set_transition", "Set transition", "A transition into a clip from the clip that ends where it starts on the same track.", ["clip_id": str("The later clip's id."), "kind": ["type": "string", "enum": ["dissolve", "dipToBlack", "wipe", "none"]], "duration": num("Seconds (default 0.5).")], required: ["clip_id", "kind"]),
@@ -463,7 +464,8 @@ enum MCPTools {
                 }
                 let intensity = args["look_intensity"] as? Double, temp = args["temperature"] as? Double, tint = args["tint"] as? Double
                 let lows = args["shadows_level"] as? Double, mids = args["midtones_level"] as? Double, highs = args["highlights_level"] as? Double
-                if intensity != nil || temp != nil || tint != nil || lows != nil || mids != nil || highs != nil {
+                let enabled = args["enabled"] as? Bool
+                if intensity != nil || temp != nil || tint != nil || lows != nil || mids != nil || highs != nil || enabled != nil {
                     edits.append(.change(id, "Colour") { proj in
                         guard let i = proj.index(of: id) else { return }
                         var g = proj.clips[i].grade ?? ColorGrade()
@@ -473,6 +475,7 @@ enum MCPTools {
                         if let lows { g.shadowsLevel = lows.clamped(to: -100...100) }
                         if let mids { g.midtonesLevel = mids.clamped(to: -100...100) }
                         if let highs { g.highlightsLevel = highs.clamped(to: -100...100) }
+                        if let enabled { g.off = !enabled }
                         proj.clips[i].grade = g.isNeutral ? nil : g
                     })
                 }
@@ -783,6 +786,7 @@ enum MCPTools {
             var gd: [String: Any] = [:]
             if let look = g.look { gd["look"] = g.lookLabel; if look != g.lookLabel { gd["look_file"] = look } }
             if g.lookIntensity != 1 { gd["look_intensity"] = g.lookIntensity }
+            if g.off { gd["enabled"] = false }
             for (k, v) in [("exposure", g.exposure), ("contrast", g.contrast), ("saturation", g.saturation), ("temperature", g.temperature), ("tint", g.tint),
                            ("shadows_level", g.shadowsLevel), ("midtones_level", g.midtonesLevel), ("highlights_level", g.highlightsLevel)] where v != 0 {
                 gd[k] = round3(v)

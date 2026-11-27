@@ -60,6 +60,7 @@ final class EditorModel: ObservableObject {
             }
         }
     }
+
     /// Captions picked on the caption track (by `CaptionBlock.id`); picking clips clears them.
     @Published var captionSelection: Set<String> = []
     /// The caption track's header was clicked: the inspector shows the caption style.

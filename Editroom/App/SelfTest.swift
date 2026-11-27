@@ -1428,8 +1428,13 @@ enum SelfTest {
             let lifted = grey(lows, dark) - grey(base, dark) > grey(lows, light) - grey(base, light) + 0.01
             let pulled = grey(base, light) - grey(highs, light) > grey(base, dark) - grey(highs, dark) + 0.01
             let kept = (try? JSONDecoder().decode(ColorGrade.self, from: JSONEncoder().encode(lows)))?.shadowsLevel == 60
-            log("GRADE LEVELS \(opens && lifted && pulled && kept ? "OK" : "FAIL") opens=\(opens) lifted=\(lifted) pulled=\(pulled) kept=\(kept)")
-            ok = ok && opens && lifted && pulled && kept
+            // Switched off (Grade's eye): kept and saved, but nothing drawn, in the viewer or an export.
+            var switched = lows; switched.off = true
+            let offOK = old?.off == false && GradeBaker.cube(for: switched) == nil && !switched.isNeutral
+                && (try? JSONDecoder().decode(ColorGrade.self, from: JSONEncoder().encode(switched)))?.off == true
+                && { var back = switched; back.off = false; return GradeBaker.cube(for: back) != nil }()
+            log("GRADE LEVELS \(opens && lifted && pulled && kept && offOK ? "OK" : "FAIL") opens=\(opens) lifted=\(lifted) pulled=\(pulled) kept=\(kept) off=\(offOK)")
+            ok = ok && opens && lifted && pulled && kept && offOK
         }
         // Overwriting into the middle of a clip with its sound: both halves keep their sound linked. Over the
         // picture only, the right half of the picture stands alone.

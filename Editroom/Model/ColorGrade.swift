@@ -24,12 +24,15 @@ struct ColorGrade: Codable, Hashable {
     var shadowsLevel = 0.0
     var midtonesLevel = 0.0
     var highlightsLevel = 0.0
+    /// Switched off (Grade's eye): kept, but the clip is shown and exported without it.
+    var off = false
 
     /// No look and every adjustment at zero. The look's strength doesn't count without a look (it isn't
     /// shown then, and a look taken away can leave it behind).
     var isNeutral: Bool {
         var g = self
         if g.look == nil { g.lookIntensity = ColorGrade().lookIntensity }
+        g.off = false
         return g == ColorGrade()
     }
 
@@ -58,6 +61,7 @@ extension ColorGrade {
         shadowsLevel = try v(.shadowsLevel, 0.0)
         midtonesLevel = try v(.midtonesLevel, 0.0)
         highlightsLevel = try v(.highlightsLevel, 0.0)
+        off = try v(.off, false)
     }
 
     /// A level as the even (grey) offset it adds across its range: ±100 is ±0.2, as far as a wheel's colour goes.
@@ -323,7 +327,7 @@ enum GradeBaker {
 
     /// RGBA float data for CIColorCube, or nil when the grade changes nothing.
     static func cube(for grade: ColorGrade?) -> Data? {
-        guard let grade, !grade.isNeutral else { return nil }
+        guard let grade, !grade.isNeutral, !grade.off else { return nil }
         if let hit = cache[grade] { return hit }
 
         var lookRecipe: GradeRecipe?

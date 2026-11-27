@@ -549,6 +549,8 @@ struct InspectorView: View {
             model.live(autoCommit: false) { p in
                 for i in p.clips.indices where ids.contains(p.clips[i].id) {
                     var g = p.clips[i].grade ?? ColorGrade()
+                    // Changing a grade that's off turns it on, so it isn't adjusted blind.
+                    g.off = false
                     body(&g)
                     p.clips[i].grade = g.isNeutral ? nil : g
                 }
@@ -558,6 +560,7 @@ struct InspectorView: View {
             model.mutate { p in
                 for i in p.clips.indices where ids.contains(p.clips[i].id) {
                     var g = p.clips[i].grade ?? ColorGrade()
+                    g.off = false
                     body(&g)
                     p.clips[i].grade = g.isNeutral ? nil : g
                 }
@@ -566,8 +569,21 @@ struct InspectorView: View {
         let done: (Bool) -> Void = { editing in
             if !editing { model.commitLive() }
         }
+        let graded = clips.contains { $0.grade.map { !$0.isNeutral } ?? false }
+        let off = clips.contains { $0.grade?.off == true }
+        // The eye: the grade off (kept, but not shown or exported) or on again, for every picked clip that has one.
+        let toggleOff = {
+            model.mutate { p in
+                for i in p.clips.indices where ids.contains(p.clips[i].id) {
+                    guard var g = p.clips[i].grade, !g.isNeutral else { continue }
+                    g.off = !off
+                    p.clips[i].grade = g
+                }
+            }
+        }
         InspectorSection("Grade", action: grade.isNeutral ? nil : ("Reset", { once { $0 = ColorGrade() } }),
-                         collapsedByDefault: true, marked: !grade.isNeutral) {
+                         collapsedByDefault: true, marked: !grade.isNeutral,
+                         accessory: graded ? AnyView(GradeEye(hidden: off, action: toggleOff)) : nil) {
             HStack(alignment: .top, spacing: 0) {
                 ColorWheel(title: "Shadows", point: grade.shadows, level: grade.shadowsLevel,
                            onChange: { pt in live { $0.shadows = pt } }, onLevel: { v in live { $0.shadowsLevel = v } }, onEnd: { model.commitLive() })
@@ -695,6 +711,8 @@ private struct InspectorSection<Content: View>: View {
     let action: (String, () -> Void)?
     /// Shows a dot beside the title while folded, so a changed section isn't hidden silently.
     let marked: Bool
+    /// Beside the title (Grade's before/after eye).
+    let accessory: AnyView?
     @ViewBuilder let content: Content
     // Plain state (saved to defaults by hand) so opening and closing can animate.
     @State private var collapsed: Bool
@@ -702,10 +720,11 @@ private struct InspectorSection<Content: View>: View {
     @State private var hovering = false
 
     init(_ title: String, action: (String, () -> Void)? = nil, collapsedByDefault: Bool = false, marked: Bool = false,
-         @ViewBuilder content: () -> Content) {
+         accessory: AnyView? = nil, @ViewBuilder content: () -> Content) {
         self.title = title
         self.action = action
         self.marked = marked
+        self.accessory = accessory
         self.content = content()
         key = "inspector.collapsed.\(title)"
         _collapsed = State(initialValue: UserDefaults.standard.object(forKey: "inspector.collapsed.\(title)") as? Bool ?? collapsedByDefault)
@@ -714,10 +733,7 @@ private struct InspectorSection<Content: View>: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
             HStack(spacing: 6) {
-                Button {
-                    withAnimation(.easeOut(duration: 0.08)) { collapsed.toggle() }
-                    UserDefaults.standard.set(collapsed, forKey: key)
-                } label: {
+                Button { toggle() } label: {
                     HStack(spacing: 6) {
                         Image(systemName: "chevron.right")
                             .font(.system(size: 7.5, weight: .bold))
@@ -729,7 +745,7 @@ private struct InspectorSection<Content: View>: View {
                         if marked && collapsed {
                             Circle().fill(Theme.accent).frame(width: 5, height: 5)
                         }
-                        Spacer(minLength: 0)
+                        if accessory == nil { Spacer(minLength: 0) }
                     }
                     .foregroundStyle(hovering ? Theme.textDim : Theme.textFaint)
                     .frame(height: 16)
@@ -738,6 +754,11 @@ private struct InspectorSection<Content: View>: View {
                 .buttonStyle(.plain)
                 .onHover { hovering = $0 }
                 .animation(.easeOut(duration: 0.12), value: hovering)
+                if let accessory {
+                    accessory
+                    // The rest of the row still folds and unfolds the section.
+                    Color.clear.frame(height: 16).contentShape(Rectangle()).onTapGesture { toggle() }
+                }
                 if let action, !collapsed {
                     TextLink(title: action.0, action: action.1)
                 }
@@ -746,6 +767,32 @@ private struct InspectorSection<Content: View>: View {
                 content.transition(.opacity.combined(with: .move(edge: .top)))
             }
         }
+    }
+
+    private func toggle() {
+        withAnimation(.easeOut(duration: 0.08)) { collapsed.toggle() }
+        UserDefaults.standard.set(collapsed, forKey: key)
+    }
+}
+
+/// Beside Grade's title: the grade on or off (off, it's kept but not shown or exported). Only there when
+/// there's a grade.
+private struct GradeEye: View {
+    let hidden: Bool
+    let action: () -> Void
+    @State private var hovering = false
+
+    var body: some View {
+        Button(action: action) {
+            Image(systemName: hidden ? "eye.slash" : "eye")
+                .font(.system(size: 10.5, weight: .medium))
+                .foregroundStyle(hidden ? Theme.accent : hovering ? Theme.textDim : Theme.textFaint)
+                .frame(width: 18, height: 16)
+                .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .onHover { hovering = $0 }
+        .help(hidden ? "Turn the grade on" : "Turn the grade off (kept, but not shown or exported)")
     }
 }
 
