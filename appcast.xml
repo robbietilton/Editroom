@@ -3,15 +3,15 @@
   <channel>
     <title>Editroom</title>
     <item>
-      <title>Version 1.0.10</title>
-      <pubDate>Thu, 26 Nov 2026 19:32:05 +0000</pubDate>
-      <sparkle:version>11</sparkle:version>
-      <sparkle:shortVersionString>1.0.10</sparkle:shortVersionString>
+      <title>Version 1.0.11</title>
+      <pubDate>Fri, 27 Nov 2026 01:39:54 +0000</pubDate>
+      <sparkle:version>12</sparkle:version>
+      <sparkle:shortVersionString>1.0.11</sparkle:shortVersionString>
       <sparkle:minimumSystemVersion>14.0</sparkle:minimumSystemVersion>
-      <link>https://github.com/robbietilton/Editroom/releases/tag/v1.0.10</link>
-      <changes><![CDATA[Fixed audio playback bug when using Bluetooth headphones.
-Fixed timeline bugs when moving clips with linked audio.]]></changes>
-      <enclosure url="https://github.com/robbietilton/Editroom/releases/download/v1.0.10/Editroom.dmg" sparkle:edSignature="yVK0J+/yPkdIHl+T1STz7tfuaqF9O4UT3F4n+JeW/AcS/xuQWg+zX1hkKxqeRl3nwqMKMS6ToaSvIsmKLJn9CA==" length="12238242" type="application/octet-stream"/>
+      <link>https://github.com/robbietilton/Editroom/releases/tag/v1.0.11</link>
+      <changes><![CDATA[Fixed Editroom opening on its own when ChatGPT or Claude is running.
+Viewer: square corners to match exports.]]></changes>
+      <enclosure url="https://github.com/robbietilton/Editroom/releases/download/v1.0.11/Editroom.dmg" sparkle:edSignature="mwPqIdcvA7Z2+FVGMb/2tM9UnDnzXyOfjr/ivw3iOmwWt+N+FJU8oyqAyVdCmUlYIfdUm8kdK3qKtaOxWdxzDg==" length="12238527" type="application/octet-stream"/>
     </item>
   </channel>
 </rss>
