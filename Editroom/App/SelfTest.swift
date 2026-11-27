@@ -2113,6 +2113,12 @@ enum SelfTest {
                 && permission1["bash"] != "allow" && permission1["edit"] != "allow"
             let tabsOK = MagicAgent.Tab.allCases.map(\.rawValue) == ["claude", "chatgpt", "opencode", "local"]
                 && MCPServer.displayName("opencode") == "OpenCode"
+            let modelOutput = "opencode/claude-opus-5-5\nopencode/gpt-6.2-sol\ninvalid\nopencode/claude-opus-5-5\n"
+            let modelOptions = MagicAgent.openCodeModelOptions(output: modelOutput, preferred: "opencode/gpt-6.2-sol")
+            let defaultOptions = MagicAgent.openCodeModelOptions(output: modelOutput, preferred: nil)
+            let modelsOK = modelOptions.map(\.id) == ["opencode/gpt-6.2-sol", "opencode/claude-opus-5-5"]
+                && defaultOptions.first?.id == "" && defaultOptions.count == 3
+                && MagicAgent.openCodeModelOptions(output: "", preferred: nil).isEmpty
 
             // Exercise AgentConnect's version detection, launcher, backup, status and removal too.
             let fake = outDir.appendingPathComponent("opencode-home", isDirectory: true)
@@ -2142,8 +2148,8 @@ enum SelfTest {
             let afterDisconnect = try String(contentsOf: config, encoding: .utf8)
             let disconnectOK = !c.openCodeConnected && afterDisconnect.contains("https://example.com/mcp")
 
-            let good = config2OK && config1OK && edgesOK && magic2OK && magic1OK && tabsOK && connectOK && disconnectOK
-            let detail = "v2=\(config2OK) v1=\(config1OK) edges=\(edgesOK) magic2=\(magic2OK) magic1=\(magic1OK) tabs=\(tabsOK) connect=\(connectOK) disconnect=\(disconnectOK)"
+            let good = config2OK && config1OK && edgesOK && magic2OK && magic1OK && tabsOK && modelsOK && connectOK && disconnectOK
+            let detail = "v2=\(config2OK) v1=\(config1OK) edges=\(edgesOK) magic2=\(magic2OK) magic1=\(magic1OK) tabs=\(tabsOK) models=\(modelsOK) connect=\(connectOK) disconnect=\(disconnectOK)"
             log("OPENCODE \(good ? "OK" : "FAIL") \(detail)")
             ok = ok && good
         } catch {

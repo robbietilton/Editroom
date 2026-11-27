@@ -954,14 +954,25 @@ private struct ModelChip: View {
                 }
             }
             .pickerStyle(.inline)
+            if kind == .opencode {
+                Divider()
+                if ai.loadingOpenCodeModels {
+                    Text("Loading models…").disabled(true)
+                } else if let error = ai.openCodeModelError {
+                    Text(error).disabled(true)
+                }
+                Button("Refresh Models") { ai.refreshOpenCodeModels() }
+                    .disabled(ai.loadingOpenCodeModels)
+            }
         } label: {
-            ChipLabel(title: ai.modelName(for: kind))
+            ChipLabel(title: kind == .opencode ? "Model: \(ai.modelName(for: kind))" : ai.modelName(for: kind))
         }
         .menuStyle(.button)
         .buttonStyle(.plain)
         .menuIndicator(.hidden)
         .fixedSize()
-        .help("Which \(kind.name) model makes the edit")
+        .help(kind == .opencode ? "Choose the OpenCode model for Magic; Refresh Models reloads OpenCode's list"
+              : "Which \(kind.name) model makes the edit")
     }
 }
 

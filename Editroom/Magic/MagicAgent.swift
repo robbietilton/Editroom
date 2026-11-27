@@ -81,7 +81,8 @@ final class MagicAgent: ObservableObject {
     private var openCodeCalls = Set<String>()
     private var openCodeAssistantMessages = Set<String>()
     @Published private(set) var openCodeModels: [ModelOption] = []
-    private var loadingOpenCodeModels = false
+    @Published private(set) var loadingOpenCodeModels = false
+    @Published private(set) var openCodeModelError: String?
     private var loadedOpenCodeModels = false
 
     /// The AIs on this Mac that Magic can use.
@@ -174,7 +175,9 @@ final class MagicAgent: ObservableObject {
             }
         case .opencode:
             loadOpenCodeModels()
-            return openCodeModels.isEmpty ? [ModelOption(id: "", name: "OpenCode default", efforts: [], defaultEffort: "")] : openCodeModels
+            if !openCodeModels.isEmpty { return openCodeModels }
+            let title = loadingOpenCodeModels ? "Loading models…" : openCodeModelError == nil ? "OpenCode default" : "Model unavailable"
+            return [ModelOption(id: "", name: title, efforts: [], defaultEffort: "")]
         }
     }
 
@@ -182,35 +185,58 @@ final class MagicAgent: ObservableObject {
     func loadOpenCodeModels() {
         guard !loadedOpenCodeModels, !loadingOpenCodeModels, let cli = AgentConnect.shared.openCodeCLI else { return }
         loadingOpenCodeModels = true
+        openCodeModelError = nil
         Task {
             let out = await run(cli, ["models"], timeout: 12)
-            let ids = out.split(separator: "\n").map {
-                $0.trimmingCharacters(in: .whitespacesAndNewlines)
-            }.filter { $0.contains("/") && !$0.contains(" ") }
-            var options = ids.map { id -> ModelOption in
-                let parts = id.split(separator: "/", maxSplits: 1)
-                let provider = parts.first.map(String.init) ?? ""
-                let model = parts.last.map(String.init) ?? id
-                let readable = model.replacingOccurrences(of: "-", with: " ")
-                let name = readable.prefix(1).uppercased() + readable.dropFirst()
-                return ModelOption(id: id, name: name, blurb: provider, efforts: [], defaultEffort: "")
-            }
-            let preferred = AgentConnect.shared.openCodeModel
-            if let preferred {
-                if !options.contains(where: { $0.id == preferred }) {
-                    options.insert(ModelOption(id: preferred, name: preferred.split(separator: "/").last.map(String.init) ?? "Default",
-                                               blurb: "Configured default", efforts: [], defaultEffort: ""), at: 0)
-                } else if let index = options.firstIndex(where: { $0.id == preferred }) {
-                    options.move(fromOffsets: IndexSet(integer: index), toOffset: 0)
-                }
+            let options = Self.openCodeModelOptions(output: out, preferred: AgentConnect.shared.openCodeModel)
+            if options.isEmpty {
+                // Stop automatic retries; the menu offers an explicit Refresh Models action.
+                loadedOpenCodeModels = true
+                openCodeModelError = "Couldn't load models. Check OpenCode, then refresh."
             } else {
-                options.insert(ModelOption(id: "", name: "OpenCode default", blurb: "Configured in OpenCode",
-                                           efforts: [], defaultEffort: ""), at: 0)
+                openCodeModels = options
+                loadedOpenCodeModels = true
             }
-            openCodeModels = options
-            loadedOpenCodeModels = true
             loadingOpenCodeModels = false
         }
+    }
+
+    func refreshOpenCodeModels() {
+        guard !loadingOpenCodeModels else { return }
+        loadedOpenCodeModels = false
+        openCodeModelError = nil
+        loadOpenCodeModels()
+    }
+
+    static func openCodeModelOptions(output: String, preferred: String?) -> [ModelOption] {
+        var seen = Set<String>()
+        let ids = output.split(separator: "\n").map {
+            $0.trimmingCharacters(in: .whitespacesAndNewlines)
+        }.filter { id in
+            let parts = id.split(separator: "/", maxSplits: 1)
+            return parts.count == 2 && !parts[0].isEmpty && !parts[1].isEmpty && !id.contains(" ") && seen.insert(id).inserted
+        }
+        var options = ids.map { id -> ModelOption in
+            let parts = id.split(separator: "/", maxSplits: 1)
+            let provider = String(parts[0])
+            let model = String(parts[1])
+            let name = model.prefix(1).uppercased() + model.dropFirst()
+            return ModelOption(id: id, name: name, blurb: provider, efforts: [], defaultEffort: "")
+        }
+        guard !options.isEmpty else { return [] }
+        if let preferred {
+            if !options.contains(where: { $0.id == preferred }) {
+                let model = preferred.split(separator: "/").last.map(String.init) ?? preferred
+                options.insert(ModelOption(id: preferred, name: model.prefix(1).uppercased() + model.dropFirst(),
+                                           blurb: "Configured default", efforts: [], defaultEffort: ""), at: 0)
+            } else if let index = options.firstIndex(where: { $0.id == preferred }) {
+                options.move(fromOffsets: IndexSet(integer: index), toOffset: 0)
+            }
+        } else {
+            options.insert(ModelOption(id: "", name: "OpenCode default", blurb: "Configured in OpenCode",
+                                       efforts: [], defaultEffort: ""), at: 0)
+        }
+        return options
     }
 
     /// The chosen model: the one picked last time if it's still offered, or the first.
