@@ -3,10 +3,8 @@ import AppKit
 
 struct ContentView: View {
     @ObservedObject var model: EditorModel
-    @State private var libraryWidth: CGFloat = 252
-    @State private var timelineHeight: CGFloat = 360
+    @ObservedObject private var layout = PanelLayout.shared
     @State private var dropTargeted = false
-    @AppStorage("magicEnabled") private var magicEnabled = true
     /// While Magic works the editor is locked: nothing under the mouse reacts (hover, scrubbing).
     @ObservedObject private var magic = MagicState.shared
     private var locked: Bool { magic.stage != nil }
@@ -23,17 +21,17 @@ struct ContentView: View {
             VStack(spacing: 0) {
                 HStack(spacing: 0) {
                     LibraryView(model: model, media: model.media)
-                        .frame(width: libraryWidth)
+                        .frame(width: layout.libraryWidth)
                         // `--library-width N` (testing): the Media panel that wide.
                         .onAppear {
                             let args = CommandLine.arguments
                             if let k = args.firstIndex(of: "--library-width"), args.count > k + 1, let w = Double(args[k + 1]) {
-                                libraryWidth = min(440, max(190, w))
+                                layout.libraryWidth = min(440, max(190, w))
                             }
                         }
                         .background(MagicAnchor(key: "library"))
                     Splitter(vertical: true) { x in
-                        libraryWidth = min(440, max(190, x - frame.minX))
+                        layout.libraryWidth = min(440, max(190, x - frame.minX))
                     }
                     PreviewView(model: model)
                     Hairline(vertical: true)
@@ -43,10 +41,10 @@ struct ContentView: View {
                 }
                 .allowsHitTesting(!locked)
                 Splitter(vertical: false) { y in
-                    timelineHeight = min(max(200, geo.size.height - 240), max(170, frame.maxY - y))
+                    layout.timelineHeight = min(max(200, geo.size.height - 240), max(170, frame.maxY - y))
                 }
                 TimelinePanel(model: model)
-                    .frame(height: min(timelineHeight, max(170, geo.size.height - 240)))
+                    .frame(height: min(layout.timelineHeight, max(170, geo.size.height - 240)))
                     .allowsHitTesting(!locked)
             }
             // A Media item being scrubbed when Magic starts lets the viewer go back.
@@ -68,43 +66,6 @@ struct ContentView: View {
         // (the drop above stays as a fallback).
         .overlay { WindowDropCatcher(model: model) }
         .preferredColorScheme(Theme.scheme)
-        // The title bar in the panel black, not macOS's lighter default.
-        .toolbarBackground(Theme.panel, for: .windowToolbar)
-        .toolbarBackground(.visible, for: .windowToolbar)
-        .toolbar {
-            ToolbarItem(placement: .principal) {
-                HStack(spacing: 6) {
-                    Text(model.title)
-                        .font(.system(size: 13, weight: .medium))
-                        .foregroundStyle(Theme.textDim)
-                    if model.isDirty {
-                        Circle().fill(Theme.textFaint).frame(width: 5, height: 5)
-                    }
-                }
-                .id(themes.look)
-            }
-            .withoutGlass()
-            ToolbarItem(placement: .primaryAction) {
-                ExportProgressPill(queue: model.exports)
-                    .id(themes.look)
-            }
-            .withoutGlass()
-            if magicEnabled {
-                ToolbarItem(placement: .primaryAction) {
-                    MagicButton(model: model)
-                        .padding(.trailing, 8)
-                        .id(themes.look)
-                }
-                .withoutGlass()
-            }
-            ToolbarItem(placement: .primaryAction) {
-                PillButton(title: "Export", prominent: true) { model.showExport = true }
-                    .help("Export (\(ShortcutStore.shared.combos(.export).first?.display ?? "⌘E"))")
-                    .padding(.trailing, 10)
-                    .id(themes.look)
-            }
-            .withoutGlass()
-        }
         .sheet(isPresented: $model.showExport) {
             ExportSheet(model: model)
         }
@@ -124,9 +85,47 @@ struct ContentView: View {
             Text(model.importError ?? "")
         }
         .onAppear {
-            KeyCommands.install(model)
+            KeyCommands.install()
             AppDelegate.shared?.model = model
         }
+    }
+}
+
+/// The window: the tab in front's editor under a title bar of tabs. A new tab in front builds the
+/// editor again for its project; the title bar stays.
+struct WindowRoot: View {
+    @ObservedObject var workspace: Workspace
+    @ObservedObject private var themes = ThemeStore.shared
+    @AppStorage("magicEnabled") private var magicEnabled = true
+    @State private var width: CGFloat = 1480
+
+    var body: some View {
+        let model = workspace.active
+        ContentView(model: model)
+            .id(ObjectIdentifier(model))
+            .onGeometryChange(for: CGFloat.self) { $0.size.width } action: { width = $0 }
+            // The title bar in the panel black, not macOS's lighter default.
+            .toolbarBackground(Theme.panel, for: .windowToolbar)
+            .toolbarBackground(.visible, for: .windowToolbar)
+            .toolbar {
+                // One item across the title bar from the traffic lights: the tabs, then Magic and Export.
+                ToolbarItem(placement: .navigation) {
+                    HStack(spacing: 0) {
+                        TabStrip(workspace: workspace)
+                            .padding(.trailing, 14)
+                        ExportProgressPill(queue: model.exports)
+                        if magicEnabled {
+                            MagicButton(model: model)
+                                .padding(.trailing, 8)
+                        }
+                        PillButton(title: "Export", prominent: true) { model.showExport = true }
+                            .help("Export (\(ShortcutStore.shared.combos(.export).first?.display ?? "⌘E"))")
+                    }
+                    .frame(width: max(560, width - 104))
+                    .id(themes.look)
+                }
+                .withoutGlass()
+            }
     }
 }
 
@@ -137,7 +136,7 @@ enum KeyCommands {
     /// The editor window, where the bare-key shortcuts work.
     private static weak var editor: NSWindow?
 
-    static func install(_ model: EditorModel) {
+    static func install() {
         guard !installed else { return }
         installed = true
         // Hand the Dock the icon directly rather than relying on its cache of this bundle path.
@@ -150,7 +149,7 @@ enum KeyCommands {
             ThemeStore.shared.apply()
         }
         NSEvent.addLocalMonitorForEvents(matching: .keyDown) { event in
-            MainActor.assumeIsolated { handle(event, model) ? nil : event }
+            MainActor.assumeIsolated { handle(event, Workspace.shared.active) ? nil : event }
         }
     }
 
@@ -201,6 +200,10 @@ enum KeyCommands {
         case .saveAs: model.saveAs()
         case .importMedia: model.showImportPanel()
         case .export: model.showExport = true
+        case .newTab: Workspace.shared.newTab()
+        case .closeTab: Workspace.shared.closeActive()
+        case .previousTab: Workspace.shared.selectPrevious()
+        case .nextTab: Workspace.shared.selectNext()
         case .undo: model.undo()
         case .redo: model.redo()
         case .playPause: model.togglePlay()

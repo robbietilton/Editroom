@@ -180,7 +180,20 @@ final class EditorModel: ObservableObject {
     private var rebuildPending = false
     private var lastRebuild = 0.0
 
-    init() {
+    /// Which tab this is, for what it keeps between launches (its recovery copy, what it reopens).
+    /// The first tab's is empty, so a project from before tabs reopens in it.
+    let slot: String
+    /// A tab that isn't in front: it doesn't play or rebuild, and holds no decoded frames.
+    private(set) var isBackground: Bool
+    /// What it had open last time is still to be reopened (a tab not looked at since launch waits until it is).
+    private(set) var needsRestore: Bool
+    private var rebuildOnWake = false
+
+    init(slot: String = "", background: Bool = false) {
+        self.slot = slot
+        isBackground = background
+        let args = CommandLine.arguments
+        needsRestore = !args.contains("--selftest") && !args.contains("--open")
         defer { sourcePreview.engine = engine }
         engine.onEnded = { [weak self] in
             guard let self else { return }
@@ -206,6 +219,8 @@ final class EditorModel: ObservableObject {
         // Back from another app: any media saved over there is opened again.
         NotificationCenter.default.addObserver(forName: NSApplication.didBecomeActiveNotification, object: nil, queue: .main) { [weak self] _ in
             MainActor.assumeIsolated {
+                // A tab behind catches up when it's brought to the front.
+                guard self?.isBackground == false else { return }
                 self?.reloadChangedMedia()
                 Task { await self?.syncFolders() }
             }
@@ -622,10 +637,10 @@ final class EditorModel: ObservableObject {
             } else if !args.contains("--selftest") {
                 // Files that opened the app have arrived by the time launching ends.
                 for _ in 0..<100 where AppDelegate.shared?.launching == true { try? await Task.sleep(nanoseconds: 20_000_000) }
-                self.restoreLastSession()
+                if !self.isBackground { self.restoreIfNeeded() }
             }
         }
-        if audioScrub { scrubber.warmUp() }
+        if audioScrub, !background { scrubber.warmUp() }
         if !CommandLine.arguments.contains("--selftest") {
             autosaveTimer = Timer.scheduledTimer(withTimeInterval: 1, repeats: true) { [weak self] _ in
                 MainActor.assumeIsolated { self?.autosaveIfIdle() }
@@ -639,21 +654,33 @@ final class EditorModel: ObservableObject {
     private var lastEdit = Date.distantPast
     private var lastRecovered: Project?
 
-    /// Unsaved work on an untitled project is kept here, and reopened on the next launch.
-    static var recoveryURL: URL {
+    /// Unsaved work on an untitled project is kept here, and reopened on the next launch (one for each tab).
+    var recoveryURL: URL {
         let dir = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
             .appendingPathComponent("Editroom/Recovery", isDirectory: true)
         try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
-        return dir.appendingPathComponent("Untitled.room")
+        return dir.appendingPathComponent(slot.isEmpty ? "Untitled.room" : "Untitled \(slot).room")
     }
+
+    /// This tab's own name for a setting it keeps between launches.
+    private func slotKey(_ key: String) -> String { slot.isEmpty ? key : key + "." + slot }
 
     /// What to reopen at launch: a project file's path, or "untitled" for the recovery copy.
     private var lastSession: String? {
-        get { UserDefaults.standard.string(forKey: "lastSession") }
+        get { UserDefaults.standard.string(forKey: slotKey("lastSession")) }
         set {
             guard !CommandLine.arguments.contains("--open") else { return }
-            UserDefaults.standard.set(newValue, forKey: "lastSession")
+            UserDefaults.standard.set(newValue, forKey: slotKey("lastSession"))
         }
+    }
+
+    /// The tab is closed for good: what it kept for next time goes.
+    func forgetSlot() {
+        try? FileManager.default.removeItem(at: recoveryURL)
+        UserDefaults.standard.removeObject(forKey: slotKey("lastSession"))
+        UserDefaults.standard.removeObject(forKey: slotKey("recoveryFor"))
+        autosaveTimer?.invalidate()
+        autosaveTimer = nil
     }
 
     /// Settings > General > Auto-save. On (the default), a saved project is written in place as you edit.
@@ -662,8 +689,8 @@ final class EditorModel: ObservableObject {
     static var autosaves: Bool { UserDefaults.standard.object(forKey: autosaveKey) as? Bool ?? true }
     /// The project file the recovery copy holds unsaved changes to, when Auto-save is off.
     private var recoveryFor: String? {
-        get { UserDefaults.standard.string(forKey: "recoveryFor") }
-        set { UserDefaults.standard.set(newValue, forKey: "recoveryFor") }
+        get { UserDefaults.standard.string(forKey: slotKey("recoveryFor")) }
+        set { UserDefaults.standard.set(newValue, forKey: slotKey("recoveryFor")) }
     }
 
     /// Two seconds after the last change, and never in the middle of a drag: a saved project is
@@ -674,6 +701,8 @@ final class EditorModel: ObservableObject {
     }
 
     func autosaveNow() {
+        // Not reopened yet: what it keeps on disk is left as it is.
+        guard !needsRestore else { return }
         commitLive()
         if let url = fileURL, Self.autosaves {
             guard isDirty else { return }
@@ -683,18 +712,18 @@ final class EditorModel: ObservableObject {
             // Auto-save off: the file is left alone, and the changes wait in the recovery copy.
             guard isDirty, lastRecovered != project else { return }
             if let data = try? JSONEncoder().encode(SavedDocument(project: project)) {
-                try? data.write(to: Self.recoveryURL, options: .atomic)
+                try? data.write(to: recoveryURL, options: .atomic)
                 lastRecovered = project
                 recoveryFor = url.path
                 lastSession = url.path
             }
         } else if project.clips.isEmpty && project.assets.isEmpty {
-            try? FileManager.default.removeItem(at: Self.recoveryURL)
+            try? FileManager.default.removeItem(at: recoveryURL)
             if lastSession == "untitled" { lastSession = nil }
         } else if isDirty, lastRecovered != project {
             let encoder = JSONEncoder()
             if let data = try? encoder.encode(SavedDocument(project: project)) {
-                try? data.write(to: Self.recoveryURL, options: .atomic)
+                try? data.write(to: recoveryURL, options: .atomic)
                 lastRecovered = project
                 recoveryFor = nil
                 lastSession = "untitled"
@@ -704,7 +733,7 @@ final class EditorModel: ObservableObject {
 
     /// Unsaved changes are let go: the recovery copy is removed, and the project counts as unchanged.
     func dropUnsaved() {
-        try? FileManager.default.removeItem(at: Self.recoveryURL)
+        try? FileManager.default.removeItem(at: recoveryURL)
         recoveryFor = nil
         lastRecovered = nil
         isDirty = false
@@ -713,12 +742,16 @@ final class EditorModel: ObservableObject {
 
     /// Opens whatever was being worked on last time: the project file, or untitled work from the
     /// recovery copy. Nothing to reopen leaves the empty project that's already there.
+    func restoreIfNeeded() {
+        guard needsRestore else { return }
+        needsRestore = false
+        restoreLastSession()
+    }
+
     private func restoreLastSession() {
-        // Opened by dropping files on the icon: those start a new project (or are the project), so nothing reopens.
-        guard AppDelegate.shared?.openedAtLaunch != true else { return }
         guard let last = lastSession else { return }
         if last == "untitled" {
-            guard let data = try? Data(contentsOf: Self.recoveryURL),
+            guard let data = try? Data(contentsOf: recoveryURL),
                   let doc = try? JSONDecoder().decode(SavedDocument.self, from: data) else { return }
             load(doc.project, url: nil, offerLocate: true)
             lastRecovered = doc.project
@@ -727,7 +760,7 @@ final class EditorModel: ObservableObject {
             let url = URL(fileURLWithPath: last)
             open(url: url)
             // Unsaved changes to it from last time (Auto-save off) come back, still unsaved.
-            if recoveryFor == last, let data = try? Data(contentsOf: Self.recoveryURL),
+            if recoveryFor == last, let data = try? Data(contentsOf: recoveryURL),
                var doc = try? JSONDecoder().decode(SavedDocument.self, from: data) {
                 doc.project.resolveMovedMedia(projectDir: url.deletingLastPathComponent())
                 load(doc.project, url: url, offerLocate: true)
@@ -750,7 +783,56 @@ final class EditorModel: ObservableObject {
         }
     }
 
-    var title: String { fileURL?.deletingPathExtension().lastPathComponent ?? "Untitled" }
+    var title: String {
+        if needsRestore, let last = lastSession, last != "untitled" { return URL(fileURLWithPath: last).deletingPathExtension().lastPathComponent }
+        return fileURL?.deletingPathExtension().lastPathComponent ?? "Untitled"
+    }
+    /// For its tab: unsaved changes, including ones waiting in a tab not reopened yet.
+    var showsUnsaved: Bool {
+        guard needsRestore, let last = lastSession else { return isDirty }
+        return last == "untitled" || recoveryFor == last
+    }
+    /// The project file open in this tab (or to be, once it's reopened).
+    var openPath: String? {
+        if needsRestore, let last = lastSession, last != "untitled" { return last }
+        return fileURL?.standardizedFileURL.path
+    }
+    /// Nothing in it: opening something can use this tab rather than a new one.
+    var isBlank: Bool {
+        !needsRestore && fileURL == nil && project.clips.isEmpty && project.assets.isEmpty && (project.folders ?? []).isEmpty
+    }
+
+    // MARK: Tabs in the background
+
+    /// Sent behind another tab: playback stops and the player lets go of its frames and sound.
+    func suspend() {
+        guard !isBackground else { return }
+        if isPlaying { pause() }
+        commitLive()
+        skim(to: nil)
+        sourcePreview.clear()
+        isBackground = true
+        rebuildOnWake = true
+        engine.unload()
+        scrubber.shutDown()
+    }
+
+    /// Brought to the front again: the settings shared by all tabs are read again and the player is rebuilt.
+    func resume() {
+        let d = UserDefaults.standard
+        if let v = d.object(forKey: "skimming") as? Bool, v != skimming { skimming = v }
+        if let v = d.object(forKey: "thumbnails") as? Bool, v != thumbnails { thumbnails = v }
+        if d.bool(forKey: "stickyEdges") != sticky { sticky = d.bool(forKey: "stickyEdges") }
+        if d.bool(forKey: "loopPlayback") != loop { loop = d.bool(forKey: "loopPlayback") }
+        if d.bool(forKey: "audioScrub") != audioScrub { audioScrub = d.bool(forKey: "audioScrub") }
+        guard isBackground else { return }
+        isBackground = false
+        if audioScrub { scrubber.warmUp() }
+        if AppDelegate.shared?.launching != true { restoreIfNeeded() }
+        if rebuildOnWake { rebuildOnWake = false; setNeedsRebuild() }
+        reloadChangedMedia()
+        Task { await syncFolders() }
+    }
     var canUndo: Bool { !undoStack.isEmpty || liveSnapshot != nil }
     var canRedo: Bool { !redoStack.isEmpty }
 
@@ -902,6 +984,7 @@ final class EditorModel: ObservableObject {
     }
 
     func setNeedsRebuild() {
+        if isBackground { rebuildOnWake = true; return }
         guard !rebuildPending, !rebuildSuspended else { return }
         rebuildPending = true
         let wait = max(0, 0.03 - (CACurrentMediaTime() - lastRebuild))
@@ -919,6 +1002,7 @@ final class EditorModel: ObservableObject {
     private func rebuildNow() {
         guard rebuildPending else { return }
         rebuildPending = false
+        if isBackground { rebuildOnWake = true; return }
         lastRebuild = CACurrentMediaTime()
         engine.rebuild(project: project, media: media, at: playhead)
         if audioScrub { scrubber.prepare(project: project, media: media) }
@@ -2191,8 +2275,19 @@ final class EditorModel: ObservableObject {
 
     // MARK: Copy, paste, duplicate
 
-    /// Copied clips, with times measured from the earliest of them.
-    private(set) var clipboard: [Clip] = []
+    /// Copied clips, shared by every open project so they can be pasted into another tab.
+    struct Clipboard {
+        /// Times measured from the earliest of them.
+        var clips: [Clip] = []
+        /// The media they play, so a project that hasn't got it can add it.
+        var assets: [MediaAsset] = []
+        /// Each clip's track by its place (V1 is 0), for pasting into another project.
+        var trackIndex: [UUID: Int] = [:]
+        /// The project they came from (its editor), where tracks are matched by id.
+        weak var source: EditorModel?
+    }
+    static var clipboard = Clipboard()
+    var clipboard: [Clip] { Self.clipboard.clips }
 
     // MARK: Copy and paste grade
 
@@ -2233,7 +2328,12 @@ final class EditorModel: ObservableObject {
     func copySelection() {
         let clips = selectedForCopy
         guard let t0 = clips.map(\.start).min() else { return }
-        clipboard = clips.map { c in var c = c; c.start -= t0; return c }
+        let used = Set(clips.compactMap(\.assetID) + clips.compactMap { $0.reversedFrom?.assetID })
+        var index: [UUID: Int] = [:]
+        for c in clips { index[c.id] = project.trackIndex(c.trackID, kind: c.kind.trackKind) }
+        Self.clipboard = Clipboard(clips: clips.map { c in var c = c; c.start -= t0; return c },
+                                   assets: project.assets.filter { used.contains($0.id) },
+                                   trackIndex: index, source: self)
     }
 
     func cutSelection() {
@@ -2244,10 +2344,58 @@ final class EditorModel: ObservableObject {
     /// Pastes at the playhead, on the same tracks, over whatever is there (like Premiere), and moves
     /// the playhead to the end of what was pasted.
     func paste() {
-        let copies = placed(clipboard, at: playhead)
-        guard !copies.isEmpty else { return }
-        insert(copies)
+        let board = Self.clipboard
+        guard !board.clips.isEmpty else { return }
+        if board.source === self {
+            let copies = placed(board.clips, at: playhead)
+            insert(copies)
+            if let end = copies.map(\.end).max() { seek(to: end) }
+            return
+        }
+        // From another project: its media is found here by file, or added to Media (the same files on disk),
+        // and its clips go on the tracks in the same places.
+        commitLive()
+        var map: [UUID: UUID] = [:]
+        var added: [MediaAsset] = []
+        for a in board.assets {
+            if let here = project.assets.first(where: { $0.id == a.id || $0.path == a.path }) {
+                map[a.id] = here.id
+            } else {
+                added.append(a)
+                map[a.id] = a.id
+            }
+        }
+        let clips = board.clips.map { original -> Clip in
+            var c = original
+            if let id = c.assetID { c.assetID = map[id] ?? id }
+            if let r = c.reversedFrom { c.reversedFrom?.assetID = map[r.assetID] ?? r.assetID }
+            let kind = c.kind.trackKind
+            let tracks = project.tracks(kind)
+            if let i = board.trackIndex[original.id], i < tracks.count, !tracks[i].locked {
+                c.trackID = tracks[i].id
+            } else {
+                c.trackID = kind == .video ? TrackToken.newVideo : TrackToken.newAudio
+            }
+            return c
+        }
+        let copies = placed(clips, at: playhead)
+        let ids = Set(copies.map(\.id))
+        mutate { p in
+            p.assets.append(contentsOf: added)
+            p.clips.append(contentsOf: copies)
+            p.materializeTokens()
+            p.resolveOverlaps(keeping: ids)
+        }
+        selection = ids
         if let end = copies.map(\.end).max() { seek(to: end) }
+        if !added.isEmpty {
+            media.expect(added)
+            Task {
+                _ = await media.restore(added)
+                objectWillChange.send()
+                setNeedsRebuild()
+            }
+        }
     }
 
     /// Puts a copy of the selection straight after it, on the same tracks.
@@ -2269,7 +2417,8 @@ final class EditorModel: ObservableObject {
                 c.linkID = links[l]
             }
             c.start += t
-            if project.track(c.trackID) == nil || project.isLocked(c.trackID) {
+            let token = c.trackID == TrackToken.newVideo || c.trackID == TrackToken.newAudio
+            if !token, project.track(c.trackID) == nil || project.isLocked(c.trackID) {
                 let kind = c.kind.trackKind
                 c.trackID = project.tracks(kind).first { !$0.locked }?.id ?? (kind == .video ? TrackToken.newVideo : TrackToken.newAudio)
             }
@@ -2486,22 +2635,16 @@ final class EditorModel: ObservableObject {
     static func isProjectFile(_ url: URL) -> Bool { projectExtensions.contains(url.pathExtension.lowercased()) }
 
     /// Files handed to the app from outside: a project opens, anything else is imported.
+    /// Files dropped on this tab: a project opens in a tab of its own, anything else is imported here.
     func handleOpen(_ urls: [URL]) {
-        if let project = urls.first(where: { Self.isProjectFile($0) }) {
-            guard confirmDiscard() else { return }
-            open(url: project)
-        }
+        for project in urls where Self.isProjectFile(project) { Workspace.shared.open(project) }
         let media = urls.filter { !Self.isProjectFile($0) }
         if !media.isEmpty { importFiles(media) }
         NSApp.activate()
     }
 
-    func newProject() {
-        guard confirmDiscard() else { return }
-        load(Project(), url: nil)
-        try? FileManager.default.removeItem(at: Self.recoveryURL)
-        lastSession = nil
-    }
+    /// File > New: a new tab.
+    func newProject() { Workspace.shared.newTab() }
 
     // MARK: Recent projects
 
@@ -2521,8 +2664,7 @@ final class EditorModel: ObservableObject {
             importError = "“\(url.lastPathComponent)” can't be found. It may have been moved or deleted."
             return
         }
-        guard confirmDiscard() else { return }
-        open(url: url)
+        Workspace.shared.open(url)
     }
 
     func clearRecents() {
@@ -2531,11 +2673,10 @@ final class EditorModel: ObservableObject {
     }
 
     func openProject() {
-        guard confirmDiscard() else { return }
         let panel = NSOpenPanel()
         panel.allowedContentTypes = Self.projectExtensions.compactMap { UTType(filenameExtension: $0) }
         guard panel.runModal() == .OK, let url = panel.url else { return }
-        open(url: url)
+        Workspace.shared.open(url)
     }
 
     func save() {
@@ -2566,7 +2707,7 @@ final class EditorModel: ObservableObject {
             var saved = project
             saved.stampRelativePaths(projectDir: url.deletingLastPathComponent())
             try encoder.encode(SavedDocument(project: saved)).write(to: url, options: .atomic)
-            if fileURL == nil || recoveryFor != nil { try? FileManager.default.removeItem(at: Self.recoveryURL) }
+            if fileURL == nil || recoveryFor != nil { try? FileManager.default.removeItem(at: recoveryURL) }
             recoveryFor = nil
             lastRecovered = nil
             fileURL = url
@@ -2578,6 +2719,8 @@ final class EditorModel: ObservableObject {
     }
 
     func load(_ p: Project, url: URL?, offerLocate: Bool = false) {
+        // Something's open now: what was open last time isn't reopened over it.
+        needsRestore = false
         if isPlaying { pause() }
         commitLive()
         undoStack.removeAll()

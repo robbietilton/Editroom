@@ -709,4 +709,27 @@ final class PlaybackEngine {
 
     /// The most recent frame handed out, so a viewer that appears later can show it straight away.
     private(set) var lastFrame: CVPixelBuffer?
+
+    /// Its tab went behind another: the players, their decoded frames and the sound's renderers are let go.
+    /// The next rebuild makes them again.
+    func unload() {
+        abandonHandoff()
+        cancelSwap()
+        audio.stop()
+        audio.load(nil, mix: nil, duration: 0, tracks: [:])
+        audioKey = nil
+        player.pause()
+        player.replaceCurrentItem(with: nil)
+        videoOutput = nil
+        dropSpare()
+        retire()
+        signature = nil
+        isSeeking = false
+        lastFrame = nil
+        lastPlayerFrame = nil
+        scrubReady = nil
+        scrubNext = nil
+        scrubPool = nil
+        scrubPoolSize = .zero
+    }
 }

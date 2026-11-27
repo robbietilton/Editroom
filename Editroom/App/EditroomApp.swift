@@ -89,11 +89,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     /// With Auto-save off, unsaved changes ask Save, Don't Save or Cancel before Editroom quits.
     func applicationShouldTerminate(_ sender: NSApplication) -> NSApplication.TerminateReply {
-        MainActor.assumeIsolated { model?.confirmDiscard(quitting: true) ?? true } ? .terminateNow : .terminateCancel
+        MainActor.assumeIsolated { Workspace.shared.confirmQuit() } ? .terminateNow : .terminateCancel
     }
 
     func applicationWillTerminate(_ notification: Notification) {
-        MainActor.assumeIsolated { model?.autosaveNow() }
+        MainActor.assumeIsolated { Workspace.shared.autosaveAll() }
     }
 
     func application(_ application: NSApplication, open urls: [URL]) {
@@ -105,11 +105,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     @MainActor private func flush() {
-        guard let model, !pending.isEmpty else { return }
+        guard model != nil, !pending.isEmpty else { return }
         let urls = pending
         pending = []
-        model.handleOpen(urls)
+        Workspace.shared.openFromOutside(urls, atLaunch: openedAtLaunch && !flushedOnce)
+        flushedOnce = true
     }
+    private var flushedOnce = false
 }
 
 /// Takes macOS's extra menu items back out, found by what they do rather than their titles so it holds in
@@ -197,7 +199,9 @@ enum AboutPanel {
 @main
 struct EditroomApp: App {
     @NSApplicationDelegateAdaptor(AppDelegate.self) private var delegate
-    @StateObject private var model = EditorModel()
+    @StateObject private var workspace = Workspace.shared
+    /// The project in the tab in front: the menus act on it.
+    private var model: EditorModel { workspace.active }
     @StateObject private var keys = ShortcutStore.shared
 
     init() {
@@ -230,7 +234,7 @@ struct EditroomApp: App {
 
     var body: some Scene {
         Window("Editroom", id: "main") {
-            ContentView(model: model)
+            WindowRoot(workspace: workspace)
                 .frame(minWidth: 1080, minHeight: 680)
         }
         .defaultSize(width: 1480, height: 940)
@@ -242,6 +246,7 @@ struct EditroomApp: App {
             }
             CommandGroup(replacing: .newItem) {
                 Button("New") { model.newProject() }.keyboardShortcut(keys.menu(.new))
+                Button("New Tab") { workspace.newTab() }.keyboardShortcut(keys.menu(.newTab))
                 Button("Open…") { model.openProject() }.keyboardShortcut(keys.menu(.open))
                 Menu("Open Recent") {
                     ForEach(model.recentProjects, id: \.self) { url in
@@ -252,6 +257,8 @@ struct EditroomApp: App {
                         .disabled(model.recentProjects.isEmpty)
                 }
                 Divider()
+                Button("Close Tab") { workspace.closeActive() }.keyboardShortcut(keys.menu(.closeTab))
+                    .disabled(workspace.tabs.count < 2)
                 Button("Save") { model.save() }.keyboardShortcut(keys.menu(.save))
                 Button("Save As…") { model.saveAs() }.keyboardShortcut(keys.menu(.saveAs))
                 Divider()
@@ -326,15 +333,27 @@ struct EditroomApp: App {
                 // The timeline toolbar's toggles, in the same order, ticked when on. Typing in a text
                 // field keeps these single keys (see KeyCommands); macOS puts Enter Full Screen after
                 // them, and MenuCleanup keeps a line above it.
-                Toggle("Filmstrips", isOn: $model.thumbnails)
-                Toggle("Snapping", isOn: $model.snapping).keyboardShortcut(keys.menu(.snapping))
-                Toggle("Sticky Edges", isOn: $model.sticky).keyboardShortcut(keys.menu(.sticky))
-                Toggle("Skimming", isOn: $model.skimming).keyboardShortcut(keys.menu(.skimming))
-                Toggle("Audio Scrubbing", isOn: $model.audioScrub).keyboardShortcut(keys.menu(.audioScrubbing))
+                Toggle("Filmstrips", isOn: bind(\.thumbnails))
+                Toggle("Snapping", isOn: bind(\.snapping)).keyboardShortcut(keys.menu(.snapping))
+                Toggle("Sticky Edges", isOn: bind(\.sticky)).keyboardShortcut(keys.menu(.sticky))
+                Toggle("Skimming", isOn: bind(\.skimming)).keyboardShortcut(keys.menu(.skimming))
+                Toggle("Audio Scrubbing", isOn: bind(\.audioScrub)).keyboardShortcut(keys.menu(.audioScrubbing))
+            }
+            CommandGroup(before: .windowArrangement) {
+                Button("Show Previous Tab") { workspace.selectPrevious() }.keyboardShortcut(keys.menu(.previousTab))
+                    .disabled(workspace.tabs.count < 2)
+                Button("Show Next Tab") { workspace.selectNext() }.keyboardShortcut(keys.menu(.nextTab))
+                    .disabled(workspace.tabs.count < 2)
+                Divider()
             }
         }
         Settings {
             SettingsView(model: model)
         }
+    }
+
+    private func bind(_ key: ReferenceWritableKeyPath<EditorModel, Bool>) -> Binding<Bool> {
+        let model = model
+        return Binding(get: { model[keyPath: key] }, set: { model[keyPath: key] = $0 })
     }
 }

@@ -105,6 +105,7 @@ struct KeyCombo: Codable, Hashable {
 /// Everything that has a keyboard shortcut.
 enum ShortcutAction: String, CaseIterable, Identifiable, Codable {
     case new, open, save, saveAs, importMedia, export
+    case newTab, closeTab, previousTab, nextTab
     case undo, redo
     case playPause, stepBack, stepForward, previousEdit, nextEdit, goToStart, goToEnd, loop, fullScreenViewer
     case selectTool, cutTool
@@ -122,6 +123,10 @@ enum ShortcutAction: String, CaseIterable, Identifiable, Codable {
         case .saveAs: "Save As…"
         case .importMedia: "Import Media…"
         case .export: "Export…"
+        case .newTab: "New Tab"
+        case .closeTab: "Close Tab"
+        case .previousTab: "Show Previous Tab"
+        case .nextTab: "Show Next Tab"
         case .undo: "Undo"
         case .redo: "Redo"
         case .playPause: "Play / Pause"
@@ -164,12 +169,13 @@ enum ShortcutAction: String, CaseIterable, Identifiable, Codable {
     }
 
     enum Group: String, CaseIterable {
-        case file = "File", edit = "Edit", playback = "Playback", tools = "Tools", clip = "Clip", mark = "Mark", view = "View"
+        case file = "File", tabs = "Tabs", edit = "Edit", playback = "Playback", tools = "Tools", clip = "Clip", mark = "Mark", view = "View"
     }
 
     var group: Group {
         switch self {
         case .new, .open, .save, .saveAs, .importMedia, .export: .file
+        case .newTab, .closeTab, .previousTab, .nextTab: .tabs
         case .undo, .redo: .edit
         case .playPause, .stepBack, .stepForward, .previousEdit, .nextEdit, .goToStart, .goToEnd, .loop, .fullScreenViewer: .playback
         case .selectTool, .cutTool: .tools
@@ -196,6 +202,10 @@ enum ShortcutAction: String, CaseIterable, Identifiable, Codable {
         case .saveAs: [.cmd("s", shift: true)]
         case .importMedia: [.cmd("i")]
         case .export: [.cmd("e")]
+        case .newTab: [.cmd("t")]
+        case .closeTab: [.cmd("w")]
+        case .previousTab: [.cmd("[", shift: true)]
+        case .nextTab: [.cmd("]", shift: true)]
         case .undo: [.cmd("z")]
         case .redo: [.cmd("z", shift: true)]
         case .playPause: [KeyCombo("space")]
@@ -223,7 +233,8 @@ enum ShortcutAction: String, CaseIterable, Identifiable, Codable {
         case .rippleTrimEnd: [KeyCombo("w")]
         // As in Final Cut Pro (Reveal in Browser).
         case .revealInMedia: [KeyCombo("f", shift: true)]
-        case .addText: [.cmd("t")]
+        // ⌃T, as in Final Cut Pro (⌘T is New Tab).
+        case .addText: [KeyCombo("t", control: true)]
         case .addMarker: [KeyCombo("m")]
         case .setIn: [KeyCombo("i")]
         case .setOut: [KeyCombo("o")]

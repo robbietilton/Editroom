@@ -1472,6 +1472,44 @@ enum SelfTest {
             log("GAPS+PASTE \(closed && all && pasteOK ? "OK" : "FAIL") gap=\(closed) all=\(all) paste=\(pasteOK)")
             ok = ok && closed && all && pasteOK
         }
+        // Pasting into another project (another tab): the media comes too, once, linked to the same file; media it
+        // already has (the same file) is used, not added again; clips keep their tracks by place (V3 stays V3, made there if need be).
+        do {
+            var src = Project()
+            let v3 = src.addTrack(.video)
+            let asset = MediaAsset(path: "/tmp/editroom-selftest/shared.mov", name: "shared.mov", kind: .video, duration: 10,
+                                   width: 1920, height: 1080, fps: 30, hasAudio: true)
+            src.assets = [asset]
+            let link = UUID()
+            src.clips = [Clip(trackID: v3, kind: .video, assetID: asset.id, start: 2, duration: 3, linkID: link),
+                         Clip(trackID: src.audioTracks[0].id, kind: .audio, assetID: asset.id, start: 2, duration: 3, linkID: link)]
+            let a = EditorModel(), b = EditorModel()
+            a.load(src, url: nil)
+            b.load(Project(), url: nil)
+            a.selection = [src.clips[0].id]
+            a.copySelection()
+            b.paste()
+            b.seek(to: 20)
+            b.paste()
+            let added = b.project.assets.count == 1 && b.project.assets[0].path == asset.path
+            let onV3 = b.project.videoTracks.count == 3 && b.project.clips.filter { $0.kind == .video }.allSatisfy { $0.trackID == b.project.videoTracks[2].id }
+            let linked = b.project.clips.count == 4 && b.project.clips.allSatisfy { $0.assetID == b.project.assets[0].id }
+            // Already in Media there (its own id): that one's used.
+            var other = Project()
+            let mine = MediaAsset(path: asset.path, name: "shared.mov", kind: .video, duration: 10, width: 1920, height: 1080, fps: 30, hasAudio: true)
+            other.assets = [mine]
+            let c = EditorModel()
+            c.load(other, url: nil)
+            c.paste()
+            let reused = c.project.assets.count == 1 && c.project.clips.count == 2 && c.project.clips.allSatisfy { $0.assetID == mine.id }
+            // Within the same project it pastes as before.
+            a.seek(to: 10)
+            a.paste()
+            let same = a.project.assets.count == 1 && a.project.clips.count == 4 && a.project.videoTracks.count == 3
+            let pasteOK = added && onV3 && linked && reused && same
+            log("PASTE ACROSS \(pasteOK ? "OK" : "FAIL") added=\(added) tracks=\(onV3) linked=\(linked) reused=\(reused) same=\(same)")
+            ok = ok && pasteOK
+        }
         // Brightness of each range: a project from before has none (and still opens), lifting the shadows brightens
         // the darks more than the brights, pulling the highlights down darkens the brights more, and it's kept.
         do {
