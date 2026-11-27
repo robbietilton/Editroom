@@ -217,6 +217,10 @@ enum MCPTools {
                 return json(["asset_id": asset.id.uuidString, "status": "unavailable", "note": "Hearing speech needs macOS 26 on this Mac."])
             }
             guard let t = await Transcripts.shared.ready(url) else {
+                if Transcripts.shared.state(for: url) == .unsupported, let language = Transcripts.shared.unsupportedLanguage {
+                    return json(["asset_id": asset.id.uuidString, "status": "unsupported_language",
+                                 "note": "\(language) speech can't be transcribed on this Mac (Apple's on-device speech recognition doesn't have it). The person can choose the speech language in Editroom's Settings › General."])
+                }
                 return json(["asset_id": asset.id.uuidString, "status": "failed", "note": "Couldn't hear what's said in \(asset.name)."])
             }
             return json(transcriptJSON(t, asset: asset, words: args["words"] as? Bool ?? false))

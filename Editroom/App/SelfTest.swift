@@ -1436,6 +1436,24 @@ enum SelfTest {
             log("GRADE LEVELS \(opens && lifted && pulled && kept && offOK ? "OK" : "FAIL") opens=\(opens) lifted=\(lifted) pulled=\(pulled) kept=\(kept) off=\(offOK)")
             ok = ok && opens && lifted && pulled && kept && offOK
         }
+        // Speech language: one this Mac can't hear is said (by name), not guessed at in English; one it can is used;
+        // Automatic is the Mac's. The setting is put back as it was.
+        if Transcripts.available {
+            let defaults = UserDefaults.standard
+            let before = defaults.string(forKey: Transcripts.languageKey)
+            defaults.set("vi_VN", forKey: Transcripts.languageKey)
+            let vi = await Transcripts.resolve()
+            defaults.set("es_ES", forKey: Transcripts.languageKey)
+            let es = await Transcripts.resolve()
+            defaults.set("", forKey: Transcripts.languageKey)
+            let auto = await Transcripts.resolve()
+            if let before { defaults.set(before, forKey: Transcripts.languageKey) } else { defaults.removeObject(forKey: Transcripts.languageKey) }
+            let unsupported = vi.locale == nil && vi.name.lowercased().contains("vietnam")
+            let spanish = es.locale?.language.languageCode?.identifier == "es"
+            let automatic = auto.locale != nil
+            log("SPEECH LANGUAGE \(unsupported && spanish && automatic ? "OK" : "FAIL") unsupported=\(unsupported) (\(vi.name)) spanish=\(spanish) (\(es.locale?.identifier ?? "-")) automatic=\(automatic) (\(auto.locale?.identifier ?? "-"))")
+            ok = ok && unsupported && spanish && automatic
+        }
         // Overwriting into the middle of a clip with its sound: both halves keep their sound linked. Over the
         // picture only, the right half of the picture stands alone.
         do {

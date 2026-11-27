@@ -1507,7 +1507,9 @@ final class TimelineCanvas: NSView {
     private func drawCaptions(_ ctx: CGContext, lane: CGRect, dim: Bool) {
         let blocks = shownCaptions
         if blocks.isEmpty {
-            let note = model.captionsWaiting ? "Listening for what's said…" : "No speech heard in the captioned clips"
+            let note = model.captionsWaiting ? "Listening for what's said…"
+                : Transcripts.shared.unsupportedLanguage.map { "\($0) speech can't be transcribed on this Mac yet" }
+                ?? "No speech heard in the captioned clips"
             let hint = NSAttributedString(string: note, attributes: Self.hintAttrs)
             hint.draw(at: CGPoint(x: 12, y: lane.midY - hint.size().height / 2))
             return

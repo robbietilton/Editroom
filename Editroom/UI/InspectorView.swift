@@ -6,6 +6,8 @@ struct InspectorView: View {
     static let width: CGFloat = 320
 
     @ObservedObject var model: EditorModel
+    /// For saying when the speech language can't be heard (the captions section).
+    @ObservedObject private var transcripts = Transcripts.shared
     @State private var speedOrigin: [Clip]?
     @State private var rampOrigin: [Clip]?
     /// Where the playhead was before a ramp dot's drag moved it to the dot; put back when the drag ends.
@@ -124,6 +126,12 @@ struct InspectorView: View {
                     Text("Listening for what's said in the captioned clips…")
                         .font(.system(size: 10.5))
                         .foregroundStyle(Theme.textFaint)
+                } else if let language = transcripts.unsupportedLanguage {
+                    // Said, rather than captions made from the wrong language.
+                    Text("\(language) speech can't be transcribed on this Mac yet. You can choose the speech language in Settings › General.")
+                        .font(.system(size: 10.5))
+                        .foregroundStyle(Theme.textDim)
+                        .fixedSize(horizontal: false, vertical: true)
                 }
             }
         }

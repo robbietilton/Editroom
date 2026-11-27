@@ -140,11 +140,60 @@ private struct GeneralSettings: View {
                         .tint(Theme.accent)
                 }
             }
+            SettingsSection("Transcription") {
+                SpeechLanguageRow()
+            }
         }
         }
         .padding(.horizontal, 24)
         .padding(.vertical, 16)
         }
+    }
+}
+
+/// The language what's said in clips is heard in (captions, cutting by what's said, search, AI apps): the Mac's
+/// own by default, or one picked here. Languages this Mac can't hear are said, not guessed at.
+private struct SpeechLanguageRow: View {
+    @AppStorage(Transcripts.languageKey) private var chosen = ""
+    @State private var languages: [Locale] = []
+    @State private var unavailable: [String] = []
+
+    private static func name(_ l: Locale) -> String { Locale.current.localizedString(forIdentifier: l.identifier) ?? l.identifier }
+    private var macLanguage: String {
+        Locale.current.localizedString(forLanguageCode: Locale.current.language.languageCode?.identifier ?? "") ?? "your Mac's"
+    }
+
+    private var detail: String {
+        var lines = [chosen.isEmpty ? "Automatic uses your Mac's language (\(macLanguage))." : "Captions and search hear speech in this language."]
+        if !unavailable.isEmpty {
+            lines.append("\(unavailable.joined(separator: ", ")) can't be transcribed on this Mac.")
+        }
+        return lines.joined(separator: " ")
+    }
+
+    var body: some View {
+        SettingsRow("Speech language", detail: detail) {
+            Picker("", selection: $chosen) {
+                Text("Automatic").tag("")
+                Divider()
+                ForEach(languages, id: \.identifier) { l in Text(Self.name(l)).tag(l.identifier) }
+            }
+            .pickerStyle(.menu)
+            .labelsHidden()
+            .fixedSize()
+        }
+        .task {
+            let supported = await Transcripts.supportedLanguages()
+            languages = supported.sorted { Self.name($0).localizedCompare(Self.name($1)) == .orderedAscending }
+            // The Mac's other languages that can't be heard (Vietnamese, say), so it's clear before captions are tried.
+            let codes = Set(supported.compactMap { $0.language.languageCode?.identifier })
+            var seen = Set<String>()
+            unavailable = Locale.preferredLanguages.compactMap { id -> String? in
+                guard let code = Locale(identifier: id).language.languageCode?.identifier, !codes.contains(code), seen.insert(code).inserted else { return nil }
+                return Locale.current.localizedString(forLanguageCode: code)
+            }
+        }
+        .onChange(of: chosen) { _, _ in Transcripts.shared.languageChanged() }
     }
 }
 

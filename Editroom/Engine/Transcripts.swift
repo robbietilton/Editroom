@@ -108,7 +108,60 @@ final class Transcripts: ObservableObject {
     static let shared = Transcripts()
 
     enum State: Equatable {
-        case waiting, working, ready, failed
+        /// `unsupported`: the speech language (Settings › General, or the Mac's) can't be heard on this Mac.
+        case waiting, working, ready, failed, unsupported
+    }
+
+    /// The speech language Settings › General picked ("" for Automatic: the Mac's own).
+    nonisolated static let languageKey = "speechLanguage"
+    nonisolated static var chosenLanguage: String { UserDefaults.standard.string(forKey: languageKey) ?? "" }
+
+    /// The language transcripts are being made in (its identifier), once worked out; saved transcripts in another
+    /// are made again.
+    private(set) var currentLanguage: String?
+    /// The language's name when it can't be heard on this Mac (Vietnamese, say), for saying so.
+    @Published private(set) var unsupportedLanguage: String?
+
+    private init() {
+        Task { await self.resolveLanguage() }
+    }
+
+    private func resolveLanguage() async {
+        let r = await Self.resolve()
+        currentLanguage = r.locale?.identifier
+        unsupportedLanguage = r.locale == nil ? r.name : nil
+    }
+
+    /// The speech language: the one picked in Settings, or the Mac's; nil when this Mac can't hear it.
+    nonisolated static func resolve() async -> (locale: Locale?, name: String) {
+        let chosen = chosenLanguage
+        let target = chosen.isEmpty ? Locale.current : Locale(identifier: chosen)
+        let name = Locale.current.localizedString(forLanguageCode: target.language.languageCode?.identifier ?? "") ?? target.identifier
+        #if canImport(Speech)
+        if #available(macOS 26, *) {
+            return (await SpeechTranscriber.supportedLocale(equivalentTo: target), name)
+        }
+        #endif
+        return (nil, name)
+    }
+
+    /// The languages this Mac can hear, for Settings.
+    nonisolated static func supportedLanguages() async -> [Locale] {
+        #if canImport(Speech)
+        if #available(macOS 26, *) { return await SpeechTranscriber.supportedLocales }
+        #endif
+        return []
+    }
+
+    /// The speech language was changed in Settings: what was heard in another language is heard again.
+    func languageChanged() {
+        Task {
+            await resolveLanguage()
+            let known = Set(made.keys).union(states.keys.filter { states[$0] != .working })
+            made.removeAll()
+            for path in known { states[path] = nil }
+            for path in known.sorted() { make(URL(fileURLWithPath: path)) }
+        }
     }
 
     /// Ready transcripts by file (path), and what's waiting or being made.
@@ -180,10 +233,23 @@ final class Transcripts: ObservableObject {
         working = url
         states[url.path] = .working
         Task.detached(priority: .utility) {
-            let result = await Self.transcribe(url)
+            let heard = await Self.transcribe(url)
             await MainActor.run {
                 let t = Transcripts.shared
                 t.working = nil
+                var result: Transcript?
+                switch heard {
+                case .heard(let transcript): result = transcript
+                case .unsupported(let name):
+                    // Not a transcript in the wrong language: none, and said why.
+                    t.unsupportedLanguage = name
+                    t.states[url.path] = .unsupported
+                    for c in t.waiters[url.path] ?? [] { c.resume(returning: nil) }
+                    t.waiters[url.path] = nil
+                    t.next()
+                    return
+                case .failed: result = nil
+                }
                 if t.stale.remove(url.path) != nil {
                     // Heard from the old file; the new one goes to the back of the line.
                     if t.states[url.path] == .waiting {
@@ -219,6 +285,8 @@ final class Transcripts: ObservableObject {
 
     private func load(_ url: URL) -> Transcript? {
         guard let data = try? Data(contentsOf: file(for: url)), let t = try? JSONDecoder().decode(Transcript.self, from: data) else { return nil }
+        // Heard in another language than the one now set (or the Mac's): heard again.
+        if !t.language.isEmpty, let now = currentLanguage, t.language != now { return nil }
         made[url.path] = t
         return t
     }
@@ -229,26 +297,29 @@ final class Transcripts: ObservableObject {
 
     // MARK: Listening
 
-    /// Every word in the file's sound, with its time. Nil if it couldn't be read; empty if nothing's said.
-    nonisolated static func transcribe(_ url: URL) async -> Transcript? {
+    enum Heard { case heard(Transcript), unsupported(String), failed }
+
+    /// Every word in the file's sound, with its time, in the speech language. Empty if nothing's said.
+    nonisolated static func transcribe(_ url: URL) async -> Heard {
         #if canImport(Speech)
         if #available(macOS 26, *) {
-            return try? await SpeechReader.read(url)
+            let language = await resolve()
+            guard let locale = language.locale else { return .unsupported(language.name) }
+            return (try? await SpeechReader.read(url, locale: locale)).flatMap { .heard($0) } ?? .failed
         }
         #endif
-        return nil
+        return .failed
     }
 }
 
 #if canImport(Speech)
 @available(macOS 26, *)
 private enum SpeechReader {
-    static func read(_ url: URL) async throws -> Transcript? {
+    static func read(_ url: URL, locale: Locale) async throws -> Transcript? {
         let asset = AVURLAsset(url: url)
         guard let track = try await asset.loadTracks(withMediaType: .audio).first else {
             return Transcript(words: [], language: "")
         }
-        let locale = await SpeechTranscriber.supportedLocale(equivalentTo: Locale.current) ?? Locale(identifier: "en-US")
         let transcriber = SpeechTranscriber(locale: locale, transcriptionOptions: [], reportingOptions: [],
                                             attributeOptions: [.audioTimeRange])
         // The language's model, once per Mac.

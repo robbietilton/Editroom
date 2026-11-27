@@ -442,7 +442,8 @@ final class EditorModel: ObservableObject {
                 if let k = args.firstIndex(of: "--transcribe"), args.count > k + 1 {
                     let url = URL(fileURLWithPath: args[k + 1])
                     let t0 = Date()
-                    let t = await Transcripts.transcribe(url)
+                    let heard = await Transcripts.transcribe(url)
+                    let t: Transcript? = { if case .heard(let x) = heard { return x } else { return nil } }()
                     let words = t?.words.map { String(format: "%.2f-%.2f %@", $0.start, $0.end, $0.text) }.joined(separator: " | ") ?? "nil"
                     FileHandle.standardError.write("TRANSCRIBE \(String(format: "%.1f", Date().timeIntervalSince(t0)))s [\(t?.language ?? "-")] \(words)\n".data(using: .utf8)!)
                 }
