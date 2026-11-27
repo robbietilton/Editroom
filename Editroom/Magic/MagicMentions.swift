@@ -27,8 +27,9 @@ enum MagicMention: Hashable {
     case clip(UUID)
     /// A marker on the timeline, by its name (`@marker:Jump`, or just `@Jump`).
     case marker(UUID)
-    /// A folder in the Media panel, by its path: every file in it and in the folders inside it (`@folder:Drone`).
-    case folder(String)
+    /// A folder in the Media panel, by its path: every file in it and in the folders inside it (`@folder:Drone`),
+    /// or with `only`, just the files directly in it (`@folder:Drone:only`).
+    case folder(String, only: Bool)
 
     static let words: [(word: String, mention: MagicMention)] = [("playhead", .playhead), ("selected", .selected), ("in-out", .range)]
 
@@ -62,9 +63,12 @@ enum MagicMention: Hashable {
         /// Just the files directly in it, not in the folders inside it.
         var direct: [UUID] = []
 
-        /// What a request means by it: everything in it, or only what's directly in it when the request says so.
-        func files(for request: String) -> [UUID] {
-            MagicMention.onlyDirect(request) && !direct.isEmpty ? direct : files
+        /// Folders inside it hold some of its files: `@folder:…:only` is offered for just its own.
+        var hasSubfolders: Bool { !direct.isEmpty && direct.count < files.count }
+
+        /// What a request means by it: everything in it, or only what's directly in it (`:only`, or the request says so).
+        func files(for request: String, only: Bool = false) -> [UUID] {
+            (only || MagicMention.onlyDirect(request)) && !direct.isEmpty ? direct : files
         }
     }
 
@@ -203,7 +207,9 @@ enum MagicMention: Hashable {
                 pool = clipNames
             } else if starts("folder:", at: i) {
                 from += 7
-                pool = folders.map { ($0.name, MagicMention.folder($0.path)) }.sorted { $0.0.count > $1.0.count }
+                pool = (folders.map { ($0.name, MagicMention.folder($0.path, only: false)) }
+                        + folders.filter(\.hasSubfolders).map { ($0.name + ":only", MagicMention.folder($0.path, only: true)) })
+                    .sorted { $0.0.count > $1.0.count }
             }
             for (name, mention) in pool {
                 let len = (name as NSString).length
@@ -231,10 +237,10 @@ enum MagicMention: Hashable {
             case .media(let id): media.first { $0.id == id }?.name ?? s.substring(with: r)
             case .clip(let id): "the clip " + (clips.first { $0.id == id }?.name ?? "")
             case .marker(let id): markers.first { $0.id == id }.map { clock($0.time) } ?? s.substring(with: r)
-            case .folder(let path):
+            case .folder(let path, let only):
                 folders.first { $0.path == path }.map { f in
-                    let names = f.files(for: text).compactMap { id in media.first { $0.id == id }?.name }
-                    return "the files in the folder \(f.label) (" + names.prefix(20).joined(separator: ", ") + (names.count > 20 ? ", and \(names.count - 20) more" : "") + ")"
+                    let names = f.files(for: text, only: only).compactMap { id in media.first { $0.id == id }?.name }
+                    return "the files \(only ? "directly " : "")in the folder \(f.label) (" + names.prefix(20).joined(separator: ", ") + (names.count > 20 ? ", and \(names.count - 20) more" : "") + ")"
                 } ?? s.substring(with: r)
             }
             s = s.replacingCharacters(in: r, with: words) as NSString

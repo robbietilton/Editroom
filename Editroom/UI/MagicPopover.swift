@@ -804,16 +804,21 @@ private struct MentionOption: Identifiable {
 
         // "@folder:" and after: every folder in Media (and the folders inside them), narrowed by name.
         let folders = MagicMention.folderLabels(p)
-        func folder(_ f: MagicMention.FolderLabel) -> MentionOption {
-            let n = f.files.count
-            return MentionOption(id: f.path, name: "folder:" + f.name,
-                                 detail: (f.label == f.name ? "" : f.label + "  ·  ") + "\(n) file\(n == 1 ? "" : "s")")
+        func files(_ n: Int) -> String { "\(n) file\(n == 1 ? "" : "s")" }
+        /// A folder, and after it, for one with folders inside, the same folder without them (`:only`).
+        func folder(_ f: MagicMention.FolderLabel) -> [MentionOption] {
+            let all = MentionOption(id: f.path, name: "folder:" + f.name, detail: (f.label == f.name ? "" : f.label + "  ·  ") + files(f.files.count))
+            guard f.hasSubfolders else { return [all] }
+            return [all, MentionOption(id: f.path + ":only", name: "folder:" + f.name + ":only", detail: "no sub-folders, " + files(f.direct.count))]
         }
         if q.hasPrefix("folder:") {
             let rest = String(q.dropFirst("folder:".count))
+            // "@folder:footage:" and on: just that folder's two rows.
+            let whole = folders.filter { f in rest.hasPrefix(f.name.lowercased() + ":") && (f.name.lowercased() + ":only").hasPrefix(rest) }
+            if !whole.isEmpty { return whole.flatMap(folder).filter { $0.name.lowercased().hasPrefix("folder:" + rest) } }
             let starts = folders.filter { $0.name.lowercased().hasPrefix(rest) }
             let inside = rest.isEmpty ? [] : folders.filter { !$0.name.lowercased().hasPrefix(rest) && $0.label.lowercased().contains(rest) }
-            return (starts + inside).map(folder)
+            return (starts + inside).flatMap(folder)
         }
 
         // "@media:" and after: every file, narrowed by name, or by kind ("@media:audio").
@@ -1076,7 +1081,7 @@ enum LocalMagic {
         let pointed = Set(MagicMention.find(in: typed, media: media, folders: folders).flatMap { m -> [UUID] in
             switch m.mention {
             case .media(let id): [id]
-            case .folder(let path): folders.first { $0.path == path }?.files(for: typed) ?? []
+            case .folder(let path, let only): folders.first { $0.path == path }?.files(for: typed, only: only) ?? []
             default: []
             }
         })

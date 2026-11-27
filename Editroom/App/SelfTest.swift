@@ -1496,8 +1496,8 @@ enum SelfTest {
             let namesOK = names == ["er-shoot", "er-shoot / Drone", "Day 2", "er-other", "er-other / Drone"]
             let found = MagicMention.find(in: "cut a promo from @folder:er-shoot / Drone please", media: p.assets, folders: folders)
             let drone = folders.first { $0.path == "/tmp/er-shoot/Drone" }
-            let findOK = found.map(\.mention) == [.folder("/tmp/er-shoot/Drone")] && Set(drone?.files ?? []) == [a.id, b.id]
-                && MagicMention.find(in: "use @folder:day 2", media: p.assets, folders: folders).map(\.mention) == [.folder("/tmp/er-shoot/Drone/Day 2")]
+            let findOK = found.map(\.mention) == [.folder("/tmp/er-shoot/Drone", only: false)] && Set(drone?.files ?? []) == [a.id, b.id]
+                && MagicMention.find(in: "use @folder:day 2", media: p.assets, folders: folders).map(\.mention) == [.folder("/tmp/er-shoot/Drone/Day 2", only: false)]
             let plain = MagicMention.plain("use @folder:Day 2 now", media: p.assets, folders: folders)
             let plainOK = plain == "use the files in the folder er-shoot / Drone / Day 2 (b.mov) now"
             let told = MagicAgent.pointing(MagicPointers(playhead: 0, selected: [], range: nil), request: "use @folder:er-shoot / Drone", project: p) ?? ""
@@ -1526,8 +1526,16 @@ enum SelfTest {
                                                request: "use all the media in just this folder @folder:er-shoot and make 10s video", project: p) ?? ""
             let justOK = justTold.contains("ONLY the 1 library file") && justTold.contains(c.id.uuidString)
                 && !justTold.contains(a.id.uuidString) && !justTold.contains(b.id.uuidString) && justTold.contains("2 files in its sub-folders")
-            let folderOK = namesOK && findOK && plainOK && toldOK && laidOut && onlyOK && localOK && justOK
-            log("MENTION FOLDER \(folderOK ? "OK" : "FAIL") names=\(namesOK) \(names.sorted()) find=\(findOK) plain=\(plainOK) told=\(toldOK) laidOut=\(laidOut) only=\(onlyOK) local=\(localOK) just=\(justOK)")
+            // "@folder:…:only": the folder's own files, without any words about it; offered only where there are folders inside.
+            let onlyFound = MagicMention.find(in: "cut from @folder:er-shoot:only now", media: p.assets, folders: folders)
+            let onlyTold = MagicAgent.pointing(MagicPointers(playhead: 0, selected: [], range: nil), request: "make a cut from @folder:er-shoot:only", project: p) ?? ""
+            let suffixOK = onlyFound.map(\.mention) == [.folder("/tmp/er-shoot", only: true)] && onlyFound.first?.range.length == 21
+                && onlyTold.contains("ONLY the 1 library file") && !onlyTold.contains(a.id.uuidString)
+                && MagicMention.plain("use @folder:er-shoot:only", media: p.assets, folders: folders) == "use the files directly in the folder er-shoot (c.mov)"
+                && shoot?.hasSubfolders == true && folders.first { $0.name == "Day 2" }?.hasSubfolders == false
+                && MagicMention.find(in: "@folder:Day 2:only", media: p.assets, folders: folders).first?.mention == .folder("/tmp/er-shoot/Drone/Day 2", only: false)
+            let folderOK = namesOK && findOK && plainOK && toldOK && laidOut && onlyOK && localOK && justOK && suffixOK
+            log("MENTION FOLDER \(folderOK ? "OK" : "FAIL") names=\(namesOK) \(names.sorted()) find=\(findOK) plain=\(plainOK) told=\(toldOK) laidOut=\(laidOut) only=\(onlyOK) local=\(localOK) just=\(justOK) suffix=\(suffixOK)")
             ok = ok && folderOK
         }
         // Pasting into another project (another tab): the media comes too, once, linked to the same file; media it
