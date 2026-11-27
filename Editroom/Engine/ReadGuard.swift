@@ -4,14 +4,17 @@ import AVFoundation
 /// threads of their own and a few at a time, never on the shared pool that every `async` task needs: a
 /// batch of them (35 clips coming in at once) must not leave imports, scans and everything else waiting.
 enum BlockingWork {
-    private static let queue = DispatchQueue(label: "editroom.reading", qos: .userInitiated, attributes: .concurrent)
-    private static let slots = DispatchSemaphore(value: 3)
+    private static let queue: OperationQueue = {
+        let queue = OperationQueue()
+        queue.name = "editroom.reading"
+        queue.qualityOfService = .userInitiated
+        queue.maxConcurrentOperationCount = 3
+        return queue
+    }()
 
     static func run<T>(_ body: @escaping () -> T) async -> T {
         await withCheckedContinuation { c in
-            queue.async {
-                slots.wait()
-                defer { slots.signal() }
+            queue.addOperation {
                 c.resume(returning: body())
             }
         }
