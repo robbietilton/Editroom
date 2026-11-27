@@ -196,7 +196,9 @@ struct InspectorView: View {
                     .foregroundStyle(Theme.textFaint)
             }
         }
-        InspectorSection("Dynamic range") {
+        // Folded unless opened (it stays as left): most work is SDR, and HDR is picked here on purpose. Folded, a
+        // dot says the project is HDR.
+        InspectorSection("Dynamic range", collapsedByDefault: true, marked: p.isHDR) {
             MenuField(label: p.isHDR ? "HDR (HLG)" : "SDR (Rec. 709)") {
                 Button("SDR (Rec. 709)") { model.setHDR(false) }
                 Button("HDR (HLG)") { model.setHDR(true) }
