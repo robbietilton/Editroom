@@ -318,11 +318,35 @@ final class MagicAgent: ObservableObject {
                     meant.append("@\(l.name) (or @marker:\(l.name)) means the marker \"\(l.name)\" at \(t(l.time)) on the timeline.")
                 }
             case .folder(let path):
-                if let f = folders.first(where: { $0.path == path }) {
+                if let f = folders.first(where: { $0.path == path }), MagicMention.onlyDirect(request), !f.direct.isEmpty {
+                    // They asked for just what's directly in it: said outright, so "all" can't be read as the sub-folders too.
+                    let files = f.direct.compactMap { id in p.assets.first { $0.id == id } }
+                    let skipped = f.files.count - files.count
+                    meant.append("@folder:\(f.name) means ONLY the \(files.count) library file\(files.count == 1 ? "" : "s") directly in the Media folder \"\(f.label)\": "
+                        + files.prefix(60).map { "\($0.name) (asset_id \($0.id.uuidString))" }.joined(separator: ", ")
+                        + (files.count > 60 ? ", and \(files.count - 60) more (list_media gives each file's folder)" : "")
+                        + ". They asked to leave out the folders inside it, so don't use any of the \(skipped) file\(skipped == 1 ? "" : "s") in its sub-folders. "
+                        + "\"All\" in their request means all of these files: every one goes in the edit, even if only briefly.")
+                } else if let f = folders.first(where: { $0.path == path }) {
+                    // Its files by where they are: directly in it, then each folder inside it, so "only this folder"
+                    // or "skip the B-roll folder" can be done.
+                    let tree = MediaTree(p)
                     let files = f.files.compactMap { id in p.assets.first { $0.id == id } }
-                    let shown = files.prefix(60).map { "\($0.name) (asset_id \($0.id.uuidString))" }.joined(separator: ", ")
-                    let more = files.count > 60 ? ", and \(files.count - 60) more (list_media gives each file's folder)" : ""
-                    meant.append("@folder:\(f.name) means the \(files.count) library file\(files.count == 1 ? "" : "s") in the Media folder \"\(f.label)\" and the folders inside it: \(shown)\(more).")
+                    var groups: [(String, [MediaAsset])] = []
+                    for a in files {
+                        let at = tree.folder(of: a) ?? f.path
+                        let name = at == f.path ? "Directly in \"\(f.label)\"" : "In \"\(tree.label(at))\""
+                        if let i = groups.firstIndex(where: { $0.0 == name }) { groups[i].1.append(a) } else { groups.append((name, [a])) }
+                    }
+                    var left = 60
+                    let listed = groups.map { name, list in
+                        let shown = list.prefix(max(0, left))
+                        left -= shown.count
+                        let more = list.count > shown.count ? (shown.isEmpty ? "" : ", ") + "and \(list.count - shown.count) more" : ""
+                        return name + ": " + shown.map { "\($0.name) (asset_id \($0.id.uuidString))" }.joined(separator: ", ") + more + "."
+                    }.joined(separator: " ")
+                    let note = files.count > 60 ? " (list_media gives each file's folder)" : ""
+                    meant.append("@folder:\(f.name) means the \(files.count) library file\(files.count == 1 ? "" : "s") in the Media folder \"\(f.label)\" and the folders inside it\(note). \(listed) Use all of them unless they ask otherwise: for example only the files directly in the folder (not the folders inside it), or leaving a folder out. If they ask for all of them, every one of those files goes in the edit, even if only briefly.")
                 }
             }
         }

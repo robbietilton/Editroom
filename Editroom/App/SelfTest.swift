@@ -1502,8 +1502,32 @@ enum SelfTest {
             let plainOK = plain == "use the files in the folder er-shoot / Drone / Day 2 (b.mov) now"
             let told = MagicAgent.pointing(MagicPointers(playhead: 0, selected: [], range: nil), request: "use @folder:er-shoot / Drone", project: p) ?? ""
             let toldOK = told.contains(a.id.uuidString) && told.contains(b.id.uuidString) && !told.contains(c.id.uuidString) && !told.contains(d.id.uuidString)
-            let folderOK = namesOK && findOK && plainOK && toldOK
-            log("MENTION FOLDER \(folderOK ? "OK" : "FAIL") names=\(namesOK) \(names.sorted()) find=\(findOK) plain=\(plainOK) told=\(toldOK)")
+            // Only what's directly in it, when asked: the AI is told where each file is, and Local keeps to the top.
+            let shoot = folders.first { $0.path == "/tmp/er-shoot" }
+            let laidOut = told.contains("Directly in \"er-shoot / Drone\": a.mov") && told.contains("In \"er-shoot / Drone / Day 2\": b.mov")
+            let asks = ["@folder:footage use only the clips directly in this folder and make a 10s clip",
+                        "@folder:footage just this folder, not the subfolders", "use @folder:footage but not the sub-folders",
+                        "@folder:footage top level only", "@folder:footage, not the folders inside it"]
+            let everything = ["@folder:footage use all the clips in this folder and make 10s clip", "make a promo from @folder:footage"]
+            let onlyOK = asks.allSatisfy(MagicMention.onlyDirect) && !everything.contains(where: MagicMention.onlyDirect)
+                && shoot?.files(for: "use @folder:er-shoot only, no subfolders") == [c.id] && Set(shoot?.files(for: "use @folder:er-shoot") ?? []) == [a.id, b.id, c.id]
+            // Local: "use all the media directly in @folder:…" keeps to that folder's files (not those and everything else).
+            var local = LocalRecipe()
+            LocalBrain.applyMedia(&local, named: [c], action: "unchanged", request: "use all the media directly in this folder and cut to 12s video",
+                                  pointed: [c.id], hasEdit: true, folder: true)
+            var asFiles = LocalRecipe()
+            LocalBrain.applyMedia(&asFiles, named: [c], action: "unchanged", request: "use all the media and add @c.mov too", pointed: [c.id], hasEdit: true)
+            // A clip elsewhere that shows something in the request isn't added to the folder's files.
+            var shown = LocalRecipe()
+            LocalBrain.applyMedia(&shown, named: [c, d], action: "only", request: "use all the footage in just this folder", pointed: [c.id], folder: true)
+            let localOK = local.keepOnly == [c.id] && asFiles.keepOnly.isEmpty && shown.keepOnly == [c.id]
+            // Asked for just the folder: the AI is told only its own files, and to leave the sub-folders out.
+            let justTold = MagicAgent.pointing(MagicPointers(playhead: 0, selected: [], range: nil),
+                                               request: "use all the media in just this folder @folder:er-shoot and make 10s video", project: p) ?? ""
+            let justOK = justTold.contains("ONLY the 1 library file") && justTold.contains(c.id.uuidString)
+                && !justTold.contains(a.id.uuidString) && !justTold.contains(b.id.uuidString) && justTold.contains("2 files in its sub-folders")
+            let folderOK = namesOK && findOK && plainOK && toldOK && laidOut && onlyOK && localOK && justOK
+            log("MENTION FOLDER \(folderOK ? "OK" : "FAIL") names=\(namesOK) \(names.sorted()) find=\(findOK) plain=\(plainOK) told=\(toldOK) laidOut=\(laidOut) only=\(onlyOK) local=\(localOK) just=\(justOK)")
             ok = ok && folderOK
         }
         // Pasting into another project (another tab): the media comes too, once, linked to the same file; media it

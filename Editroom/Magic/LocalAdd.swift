@@ -132,7 +132,7 @@ enum LocalAdd {
             switch m {
             case .media(let id): return place ? [] : [id]
             // Every file in a folder they named.
-            case .folder(let path): return folders.first { $0.path == path }?.files ?? []
+            case .folder(let path): return folders.first { $0.path == path }?.files(for: typed) ?? []
             default: return []
             }
         }

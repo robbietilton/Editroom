@@ -59,6 +59,28 @@ enum MagicMention: Hashable {
         let name: String
         let label: String
         let files: [UUID]
+        /// Just the files directly in it, not in the folders inside it.
+        var direct: [UUID] = []
+
+        /// What a request means by it: everything in it, or only what's directly in it when the request says so.
+        func files(for request: String) -> [UUID] {
+            MagicMention.onlyDirect(request) && !direct.isEmpty ? direct : files
+        }
+    }
+
+    /// The request asks for only what's directly in a folder, not the folders inside it ("only the clips in this
+    /// folder, not the sub-folders", "top level only").
+    static func onlyDirect(_ request: String) -> Bool {
+        let t = request.lowercased().replacingOccurrences(of: "-", with: " ").replacingOccurrences(of: "sub folder", with: "subfolder")
+        let phrases = ["directly in", "top level", "only this folder", "only the folder", "only in this folder", "only in the folder",
+                       "just this folder", "just the folder", "just in this folder", "only what's in", "only whats in",
+                       "not the subfolder", "no subfolder", "without subfolder", "without the subfolder", "exclude subfolder",
+                       "excluding subfolder", "excluding the subfolder", "skip the subfolder", "skip subfolder", "ignore the subfolder",
+                       "ignore subfolder", "not subfolder", "not in subfolder", "not in the subfolder",
+                       "not the folders inside", "not in the folders inside", "not the folders in", "not from the folders inside",
+                       "without the folders inside", "ignore the folders inside", "skip the folders inside", "leave out the folders inside",
+                       "not the nested", "no nested", "not nested"]
+        return phrases.contains { t.contains($0) }
     }
 
     static func folderLabels(_ p: Project) -> [FolderLabel] {
@@ -71,7 +93,10 @@ enum MagicMention: Hashable {
         let found = paths.map { f in (f, tree.name(f), tree.label(f), tree.assets(under: f, of: p.assets).map(\.id)) }.filter { !$0.3.isEmpty }
         var count: [String: Int] = [:]
         for f in found { count[f.1.lowercased(), default: 0] += 1 }
-        return found.map { f in FolderLabel(path: f.0, name: count[f.1.lowercased()]! > 1 ? f.2 : f.1, label: f.2, files: f.3) }
+        return found.map { f in
+            FolderLabel(path: f.0, name: count[f.1.lowercased()]! > 1 ? f.2 : f.1, label: f.2, files: f.3,
+                        direct: tree.assets(in: f.0, of: p.assets).map(\.id))
+        }
     }
 
     static func markerLabels(_ p: Project) -> [MarkerLabel] {
@@ -208,7 +233,7 @@ enum MagicMention: Hashable {
             case .marker(let id): markers.first { $0.id == id }.map { clock($0.time) } ?? s.substring(with: r)
             case .folder(let path):
                 folders.first { $0.path == path }.map { f in
-                    let names = f.files.compactMap { id in media.first { $0.id == id }?.name }
+                    let names = f.files(for: text).compactMap { id in media.first { $0.id == id }?.name }
                     return "the files in the folder \(f.label) (" + names.prefix(20).joined(separator: ", ") + (names.count > 20 ? ", and \(names.count - 20) more" : "") + ")"
                 } ?? s.substring(with: r)
             }

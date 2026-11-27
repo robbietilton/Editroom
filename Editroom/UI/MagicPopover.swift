@@ -1076,11 +1076,12 @@ enum LocalMagic {
         let pointed = Set(MagicMention.find(in: typed, media: media, folders: folders).flatMap { m -> [UUID] in
             switch m.mention {
             case .media(let id): [id]
-            case .folder(let path): folders.first { $0.path == path }?.files ?? []
+            case .folder(let path): folders.first { $0.path == path }?.files(for: typed) ?? []
             default: []
             }
         })
         let request = MagicMention.plain(typed, media: media, clips: MagicMention.clipLabels(model.project), folders: folders)
+        let namedFolder = MagicMention.find(in: typed, media: media, folders: folders).contains { if case .folder = $0.mention { return true } else { return false } }
         // No request: Local's own improvement, with the same note at the end (Undo, Done).
         guard !request.isEmpty else {
             let started = Date()
@@ -1200,6 +1201,7 @@ enum LocalMagic {
             do {
                 recipe = try await LocalBrain.recipe(for: request, media: media, pointed: pointed,
                                                      hasEdit: model.project.clips.contains { $0.kind == .video || $0.kind == .image },
+                                                     folder: namedFolder,
                                                      shows: { model.media.sceneTags($0) })
                 // Stopped while it was reading: nothing to do.
                 guard run == MagicShow.runID else { return }

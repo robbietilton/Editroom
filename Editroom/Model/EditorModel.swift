@@ -659,6 +659,9 @@ final class EditorModel: ObservableObject {
         let dir = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
             .appendingPathComponent("Editroom/Recovery", isDirectory: true)
         try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+        // Test launches (`--open`, `--selftest`) keep theirs apart, so they never touch a real tab's.
+        let args = CommandLine.arguments
+        if args.contains("--open") || args.contains("--selftest") { return dir.appendingPathComponent("Untitled (test).room") }
         return dir.appendingPathComponent(slot.isEmpty ? "Untitled.room" : "Untitled \(slot).room")
     }
 
@@ -669,7 +672,7 @@ final class EditorModel: ObservableObject {
     private var lastSession: String? {
         get { UserDefaults.standard.string(forKey: slotKey("lastSession")) }
         set {
-            guard !CommandLine.arguments.contains("--open") else { return }
+            guard !CommandLine.arguments.contains("--open"), !CommandLine.arguments.contains("--selftest") else { return }
             UserDefaults.standard.set(newValue, forKey: slotKey("lastSession"))
         }
     }
@@ -690,7 +693,10 @@ final class EditorModel: ObservableObject {
     /// The project file the recovery copy holds unsaved changes to, when Auto-save is off.
     private var recoveryFor: String? {
         get { UserDefaults.standard.string(forKey: slotKey("recoveryFor")) }
-        set { UserDefaults.standard.set(newValue, forKey: slotKey("recoveryFor")) }
+        set {
+            guard !CommandLine.arguments.contains("--open"), !CommandLine.arguments.contains("--selftest") else { return }
+            UserDefaults.standard.set(newValue, forKey: slotKey("recoveryFor"))
+        }
     }
 
     /// Two seconds after the last change, and never in the middle of a drag: a saved project is

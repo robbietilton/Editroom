@@ -112,6 +112,11 @@ final class PlaybackEngine {
             signature = nil
             duration = 0
             isSeeking = false
+            // Nothing to show: the last picture goes too, so a viewer that appears now (Magic starting, full
+            // screen) is black rather than showing what was there before.
+            lastFrame = nil
+            lastPlayerFrame = nil
+            scrubReady = nil
             return
         }
         duration = built.duration

@@ -77,7 +77,8 @@ struct MentionField: NSViewRepresentable {
     @MainActor final class Coordinator: NSObject, NSTextViewDelegate {
         var parent: MentionField
         /// An `@` they closed the list on with esc: no list for it until they type somewhere else.
-        private var dismissed: Int?
+        /// An `@` whose list is closed (esc, or something picked from it): it stays closed while the cursor is in it.
+        var dismissed: Int?
 
         init(_ parent: MentionField) { self.parent = parent }
 
@@ -185,6 +186,9 @@ struct MentionField: NSViewRepresentable {
         let s = tv.string as NSString
         // A space after it, unless one's there already.
         let spaced = !space || (caret < s.length && s.character(at: caret) == 0x20) ? "" : " "
+        // Picked: the list closes and stays closed, even though what's after the `@` could still match more
+        // ("@folder:footage " is the start of "footage / _stills").
+        if space { (tv.delegate as? MentionField.Coordinator)?.dismissed = at }
         tv.insertText("@" + name + spaced, replacementRange: NSRange(location: at, length: caret - at))
         if spaced.isEmpty, space { tv.setSelectedRange(NSRange(location: at + (name as NSString).length + 2, length: 0)) }
         if space { self.at = nil }

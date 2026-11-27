@@ -236,10 +236,12 @@ enum LocalBrain {
     static let notThings: Set<String> = ["make", "the", "and", "use", "using", "only", "just", "clip", "clips", "shot", "shots",
         "video", "videos", "cut", "edit", "fast", "slow", "with", "out", "take", "remove", "keep", "all", "some", "more", "less",
         "seconds", "second", "minute", "music", "song", "look", "vertical", "square", "from", "into", "this", "that", "these",
-        "show", "shows", "showing", "see", "want", "give", "put", "add", "where", "who", "any", "little", "big"]
+        "show", "shows", "showing", "see", "want", "give", "put", "add", "where", "who", "any", "little", "big",
+        "footage", "media", "file", "files", "folder", "folders", "subfolder", "subfolders", "directly", "inside", "nested", "level"]
 
+    /// `folder`: a folder was named with @folder:, so "all" means all of that folder, not those as well as the rest.
     static func applyMedia(_ r: inout LocalRecipe, named: [MediaAsset], action: String, request: String, pointed: Set<UUID> = [],
-                           hasEdit: Bool = false) {
+                           hasEdit: Bool = false, folder: Bool = false) {
         guard !named.isEmpty else { return }
         let text = request.lowercased()
         let only = ["only", "just ", "nothing else", "nothing but", "except", "solely", "keep ", "use the ", "using the "].contains { text.contains($0) }
@@ -257,10 +259,12 @@ enum LocalBrain {
         // the words say so (Apple's model sometimes reads "add" as "remove").
         let picked = !explicit && action == "remove" && !remove ? "only" : action
         let fallback = hasEdit ? "unchanged" : !explicit ? picked : !amongOthers && action != "remove" ? "only" : "unchanged"
-        let mode = only && !remove ? "only" : remove && !only ? "remove" : fallback
-        let ids = Set(named.map(\.id))
+        let mode = folder && !remove ? "only" : only && !remove ? "only" : remove && !only ? "remove" : fallback
+        // A folder named: its files are what's meant, not others that happen to show something in the request.
+        let chosen = folder && !pointed.isEmpty ? named.filter { pointed.contains($0.id) } : named
+        let ids = Set(chosen.map(\.id))
         if mode == "only" { r.keepOnly = ids } else if mode == "remove" { r.takeOut = ids } else { return }
-        r.mediaNames = named.map(\.name)
+        r.mediaNames = chosen.map(\.name)
         r.clearRest = mode == "only" && ["nothing else", "everything else", "anything else", "on the timeline", "on timeline"].contains { text.contains($0) }
         // Their names aren't something it couldn't do.
         let lower = named.map { $0.name.lowercased() }
@@ -367,7 +371,7 @@ enum LocalBrain {
     }
 
     /// Reads a request into a recipe. `media` is the library, so named items can be picked out.
-    static func recipe(for request: String, media: [MediaAsset] = [], pointed: Set<UUID> = [], hasEdit: Bool = false,
+    static func recipe(for request: String, media: [MediaAsset] = [], pointed: Set<UUID> = [], hasEdit: Bool = false, folder: Bool = false,
                        shows: (UUID) -> SceneTags? = { _ in nil }) async throws -> LocalRecipe {
         // Files named, with @ or by name, or by what they show ("the pool clips").
         let words = Transcript.tokens(request).filter { $0.count >= 3 && !Self.notThings.contains($0) }
@@ -396,7 +400,7 @@ enum LocalBrain {
                 r.frame = LocalRecipe.Frame(rawValue: out.frame) ?? .unchanged
                 r.cannotDo = out.cannotDo.trimmingCharacters(in: .whitespacesAndNewlines)
                 r = checked(r, against: request)
-                applyMedia(&r, named: named, action: out.mediaAction, request: request, pointed: pointed, hasEdit: hasEdit)
+                applyMedia(&r, named: named, action: out.mediaAction, request: request, pointed: pointed, hasEdit: hasEdit, folder: folder)
                 let showing = showing(words, in: media, shows: shows)
                 r.shown = showing.map(\.id)
                 if let best = showing.first, let tags = shows(best.id) {
