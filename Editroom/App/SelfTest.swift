@@ -185,7 +185,14 @@ enum SelfTest {
         writer.add(input)
         guard writer.startWriting() else { return false }
         writer.startSession(atSourceTime: .zero)
-        let columns = (0..<W).map { Float16(value($0)) }
+        // Half floats by hand: Swift's Float16 isn't there on Intel Macs. (Values here are 0-1.)
+        func half(_ v: Float) -> UInt16 {
+            guard v > 0 else { return 0 }
+            let bits = v.bitPattern, exp = Int((bits >> 23) & 0xFF) - 112, man = bits & 0x7F_FFFF
+            guard exp > 0 else { return 0 }
+            return UInt16(min(0x7BFF, (UInt32(exp) << 10 | man >> 13) + ((man >> 12) & 1)))
+        }
+        let columns = (0..<W).map { half(Float(value($0))) }
         for f in 0..<30 {
             while !input.isReadyForMoreMediaData { try? await Task.sleep(nanoseconds: 2_000_000) }
             guard let pool = adaptor.pixelBufferPool else { return false }
@@ -193,8 +200,8 @@ enum SelfTest {
             CVPixelBufferPoolCreatePixelBuffer(nil, pool, &pb)
             guard let b = pb else { return false }
             CVPixelBufferLockBaseAddress(b, [])
-            let base = CVPixelBufferGetBaseAddress(b)!.assumingMemoryBound(to: Float16.self), row = CVPixelBufferGetBytesPerRow(b) / 2
-            for y in 0..<H { for x in 0..<W { let p = base + y * row + x * 4; p[0] = columns[x]; p[1] = columns[x]; p[2] = columns[x]; p[3] = 1 } }
+            let base = CVPixelBufferGetBaseAddress(b)!.assumingMemoryBound(to: UInt16.self), row = CVPixelBufferGetBytesPerRow(b) / 2
+            for y in 0..<H { for x in 0..<W { let p = base + y * row + x * 4; p[0] = columns[x]; p[1] = columns[x]; p[2] = columns[x]; p[3] = 0x3C00 } }
             CVPixelBufferUnlockBaseAddress(b, [])
             CVBufferSetAttachment(b, kCVImageBufferColorPrimariesKey, hlg ? kCVImageBufferColorPrimaries_ITU_R_2020 : kCVImageBufferColorPrimaries_ITU_R_709_2, .shouldPropagate)
             CVBufferSetAttachment(b, kCVImageBufferTransferFunctionKey, hlg ? kCVImageBufferTransferFunction_ITU_R_2100_HLG : kCVImageBufferTransferFunction_ITU_R_709_2, .shouldPropagate)
