@@ -81,6 +81,8 @@ enum LocalAdd {
                 if let c = before ? uses.first : uses.last, let s = around([c], p.asset(id)?.name ?? "it") { return s }
             case .range:
                 if let r = pointers.range { return before ? Spot(time: r.start, label: "before the marked range") : Spot(time: r.end, label: "after the marked range") }
+            case .folder:
+                continue
             }
         }
         // "the selected clip" in words.
@@ -123,10 +125,16 @@ enum LocalAdd {
 
         // The files they named to add (not ones named as the place); else what isn't in the edit yet.
         let ns = typed as NSString
-        let named = MagicMention.find(in: typed, media: p.assets).compactMap { (range, m) -> UUID? in
-            guard case .media(let id) = m else { return nil }
+        let folders = MagicMention.folderLabels(p)
+        let named = MagicMention.find(in: typed, media: p.assets, folders: folders).flatMap { (range, m) -> [UUID] in
             let lead = ns.substring(to: range.location).lowercased().suffix(16)
-            return lead.contains("after") || lead.contains("before") || lead.contains("front of") || lead.contains("ahead of") ? nil : id
+            let place = lead.contains("after") || lead.contains("before") || lead.contains("front of") || lead.contains("ahead of")
+            switch m {
+            case .media(let id): return place ? [] : [id]
+            // Every file in a folder they named.
+            case .folder(let path): return folders.first { $0.path == path }?.files ?? []
+            default: return []
+            }
         }
         let used = Set(p.clips.compactMap(\.assetID))
         let pool = named.isEmpty

@@ -14,6 +14,8 @@ struct MentionField: NSViewRepresentable {
     let clips: [MagicMention.ClipLabel]
     /// Markers on the timeline, for colouring their names.
     var markers: [MagicMention.MarkerLabel] = []
+    /// Folders in Media, for colouring `@folder:` names.
+    var folders: [MagicMention.FolderLabel] = []
     /// What's typed after an `@` at the caret, or nil when the caret isn't in one.
     let onQuery: (String?) -> Void
     /// A key while typing; true if it was used.
@@ -104,7 +106,7 @@ struct MentionField: NSViewRepresentable {
             let all = NSRange(location: 0, length: storage.length)
             storage.beginEditing()
             storage.setAttributes(plainAttributes, range: all)
-            for (r, _) in MagicMention.find(in: storage.string, media: parent.media, clips: parent.clips, markers: parent.markers) where NSMaxRange(r) <= storage.length {
+            for (r, _) in MagicMention.find(in: storage.string, media: parent.media, clips: parent.clips, markers: parent.markers, folders: parent.folders) where NSMaxRange(r) <= storage.length {
                 storage.addAttributes([.font: MentionField.mentionFont, .foregroundColor: Theme.NS.text], range: r)
             }
             // Times Magic understands ("0:05", "between 5s and 8s"), bold the same way.

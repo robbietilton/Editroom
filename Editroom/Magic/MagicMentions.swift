@@ -18,7 +18,7 @@ struct MagicPointers {
 }
 
 /// `@playhead`, `@selected`, `@in-out`, `@` + a library file's name, `@clip:` + one clip on the
-/// timeline and `@marker:` + a marker (or a marker's name alone), typed in the Magic box to say exactly
+/// timeline, `@marker:` + a marker (or a marker's name alone) and `@folder:` + a folder in Media, typed in the Magic box to say exactly
 /// what a request is about.
 enum MagicMention: Hashable {
     case playhead, selected, range
@@ -27,6 +27,8 @@ enum MagicMention: Hashable {
     case clip(UUID)
     /// A marker on the timeline, by its name (`@marker:Jump`, or just `@Jump`).
     case marker(UUID)
+    /// A folder in the Media panel, by its path: every file in it and in the folders inside it (`@folder:Drone`).
+    case folder(String)
 
     static let words: [(word: String, mention: MagicMention)] = [("playhead", .playhead), ("selected", .selected), ("in-out", .range)]
 
@@ -48,6 +50,28 @@ enum MagicMention: Hashable {
         let name: String
         let time: Double
         let tint: Marker.Tint
+    }
+
+    /// A folder in Media as `@folder:` names it: its own name, or its path in Media ("B-roll / Drone") when
+    /// another folder has the same name. `files` are what's in it and in the folders inside it.
+    struct FolderLabel {
+        let path: String
+        let name: String
+        let label: String
+        let files: [UUID]
+    }
+
+    static func folderLabels(_ p: Project) -> [FolderLabel] {
+        let tree = MediaTree(p)
+        var paths: [String] = []
+        func walk(_ folder: String?) {
+            for f in tree.folders(in: folder) { paths.append(f); walk(f) }
+        }
+        walk(nil)
+        let found = paths.map { f in (f, tree.name(f), tree.label(f), tree.assets(under: f, of: p.assets).map(\.id)) }.filter { !$0.3.isEmpty }
+        var count: [String: Int] = [:]
+        for f in found { count[f.1.lowercased(), default: 0] += 1 }
+        return found.map { f in FolderLabel(path: f.0, name: count[f.1.lowercased()]! > 1 ? f.2 : f.1, label: f.2, files: f.3) }
     }
 
     static func markerLabels(_ p: Project) -> [MarkerLabel] {
@@ -109,7 +133,7 @@ enum MagicMention: Hashable {
     /// Every mention in the text, in order, with where it is (UTF-16, for the text view). A file's name
     /// counts with or without its extension; the longest name that fits wins.
     static func find(in text: String, media: [MediaAsset], clips: [ClipLabel] = [],
-                     markers: [MarkerLabel] = []) -> [(range: NSRange, mention: MagicMention)] {
+                     markers: [MarkerLabel] = [], folders: [FolderLabel] = []) -> [(range: NSRange, mention: MagicMention)] {
         let s = text as NSString
         guard s.range(of: "@").location != NSNotFound else { return [] }
         var names: [(String, MagicMention)] = words.map { ($0.word, $0.mention) }
@@ -152,6 +176,9 @@ enum MagicMention: Hashable {
             } else if starts("clip:", at: i) {
                 from += 5
                 pool = clipNames
+            } else if starts("folder:", at: i) {
+                from += 7
+                pool = folders.map { ($0.name, MagicMention.folder($0.path)) }.sorted { $0.0.count > $1.0.count }
             }
             for (name, mention) in pool {
                 let len = (name as NSString).length
@@ -168,9 +195,10 @@ enum MagicMention: Hashable {
 
     /// The request in plain words, for a reader that doesn't know about mentions (Apple's model):
     /// "@selected" reads "the selected clips", "@beach.mov" reads "beach.mov".
-    static func plain(_ text: String, media: [MediaAsset], clips: [ClipLabel] = [], markers: [MarkerLabel] = []) -> String {
+    static func plain(_ text: String, media: [MediaAsset], clips: [ClipLabel] = [], markers: [MarkerLabel] = [],
+                      folders: [FolderLabel] = []) -> String {
         var s = text as NSString
-        for (r, m) in find(in: text, media: media, clips: clips, markers: markers).reversed() {
+        for (r, m) in find(in: text, media: media, clips: clips, markers: markers, folders: folders).reversed() {
             let words: String = switch m {
             case .playhead: "the playhead"
             case .selected: "the selected clips"
@@ -178,6 +206,11 @@ enum MagicMention: Hashable {
             case .media(let id): media.first { $0.id == id }?.name ?? s.substring(with: r)
             case .clip(let id): "the clip " + (clips.first { $0.id == id }?.name ?? "")
             case .marker(let id): markers.first { $0.id == id }.map { clock($0.time) } ?? s.substring(with: r)
+            case .folder(let path):
+                folders.first { $0.path == path }.map { f in
+                    let names = f.files.compactMap { id in media.first { $0.id == id }?.name }
+                    return "the files in the folder \(f.label) (" + names.prefix(20).joined(separator: ", ") + (names.count > 20 ? ", and \(names.count - 20) more" : "") + ")"
+                } ?? s.substring(with: r)
             }
             s = s.replacingCharacters(in: r, with: words) as NSString
         }

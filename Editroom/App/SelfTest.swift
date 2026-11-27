@@ -1479,6 +1479,33 @@ enum SelfTest {
             log("GAPS+PASTE \(closed && all && pasteOK ? "OK" : "FAIL") gap=\(closed) all=\(all) paste=\(pasteOK)")
             ok = ok && closed && all && pasteOK
         }
+        // @folder: a folder in Media, with the folders inside it; two folders of the same name are told apart by
+        // their path; Magic and the AI apps are told exactly which files it holds.
+        do {
+            func asset(_ path: String) -> MediaAsset {
+                MediaAsset(path: path, name: URL(fileURLWithPath: path).lastPathComponent, kind: .video, duration: 5,
+                           width: 1920, height: 1080, fps: 30, hasAudio: false)
+            }
+            var p = Project()
+            let a = asset("/tmp/er-shoot/Drone/a.mov"), b = asset("/tmp/er-shoot/Drone/Day 2/b.mov")
+            let c = asset("/tmp/er-shoot/c.mov"), d = asset("/tmp/er-other/Drone/d.mov")
+            p.assets = [a, b, c, d]
+            p.folders = [MediaFolder(path: "/tmp/er-shoot"), MediaFolder(path: "/tmp/er-other")]
+            let folders = MagicMention.folderLabels(p)
+            let names = Set(folders.map(\.name))
+            let namesOK = names == ["er-shoot", "er-shoot / Drone", "Day 2", "er-other", "er-other / Drone"]
+            let found = MagicMention.find(in: "cut a promo from @folder:er-shoot / Drone please", media: p.assets, folders: folders)
+            let drone = folders.first { $0.path == "/tmp/er-shoot/Drone" }
+            let findOK = found.map(\.mention) == [.folder("/tmp/er-shoot/Drone")] && Set(drone?.files ?? []) == [a.id, b.id]
+                && MagicMention.find(in: "use @folder:day 2", media: p.assets, folders: folders).map(\.mention) == [.folder("/tmp/er-shoot/Drone/Day 2")]
+            let plain = MagicMention.plain("use @folder:Day 2 now", media: p.assets, folders: folders)
+            let plainOK = plain == "use the files in the folder er-shoot / Drone / Day 2 (b.mov) now"
+            let told = MagicAgent.pointing(MagicPointers(playhead: 0, selected: [], range: nil), request: "use @folder:er-shoot / Drone", project: p) ?? ""
+            let toldOK = told.contains(a.id.uuidString) && told.contains(b.id.uuidString) && !told.contains(c.id.uuidString) && !told.contains(d.id.uuidString)
+            let folderOK = namesOK && findOK && plainOK && toldOK
+            log("MENTION FOLDER \(folderOK ? "OK" : "FAIL") names=\(namesOK) \(names.sorted()) find=\(findOK) plain=\(plainOK) told=\(toldOK)")
+            ok = ok && folderOK
+        }
         // Pasting into another project (another tab): the media comes too, once, linked to the same file; media it
         // already has (the same file) is used, not added again; clips keep their tracks by place (V3 stays V3, made there if need be).
         do {

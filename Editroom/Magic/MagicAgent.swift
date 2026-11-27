@@ -281,7 +281,8 @@ final class MagicAgent: ObservableObject {
     static func pointing(_ ptr: MagicPointers, request: String, project p: Project) -> String? {
         let labels = MagicMention.clipLabels(p)
         let marks = MagicMention.markerLabels(p)
-        let mentions = MagicMention.find(in: request, media: p.assets, clips: labels, markers: marks)
+        let folders = MagicMention.folderLabels(p)
+        let mentions = MagicMention.find(in: request, media: p.assets, clips: labels, markers: marks, folders: folders)
         guard !p.clips.isEmpty || !mentions.isEmpty else { return nil }
         func t(_ s: Double) -> String { String(format: "%.2fs", s) }
         func track(_ c: Clip) -> String {
@@ -315,6 +316,13 @@ final class MagicAgent: ObservableObject {
             case .marker(let id):
                 if let l = marks.first(where: { $0.id == id }) {
                     meant.append("@\(l.name) (or @marker:\(l.name)) means the marker \"\(l.name)\" at \(t(l.time)) on the timeline.")
+                }
+            case .folder(let path):
+                if let f = folders.first(where: { $0.path == path }) {
+                    let files = f.files.compactMap { id in p.assets.first { $0.id == id } }
+                    let shown = files.prefix(60).map { "\($0.name) (asset_id \($0.id.uuidString))" }.joined(separator: ", ")
+                    let more = files.count > 60 ? ", and \(files.count - 60) more (list_media gives each file's folder)" : ""
+                    meant.append("@folder:\(f.name) means the \(files.count) library file\(files.count == 1 ? "" : "s") in the Media folder \"\(f.label)\" and the folders inside it: \(shown)\(more).")
                 }
             }
         }

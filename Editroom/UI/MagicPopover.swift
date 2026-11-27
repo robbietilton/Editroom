@@ -641,7 +641,7 @@ private struct PromptBox: View {
                     .allowsHitTesting(false)
             }
             MentionField(text: $text, media: model.project.assets, clips: MagicMention.clipLabels(model.project),
-                         markers: MagicMention.markerLabels(model.project), onQuery: { query = $0 }, onKey: key, controller: controller)
+                         markers: MagicMention.markerLabels(model.project), folders: MagicMention.folderLabels(model.project), onQuery: { query = $0 }, onKey: key, controller: controller)
                 .padding(.vertical, 9)
         }
         .frame(height: height, alignment: .topLeading)
@@ -802,6 +802,20 @@ private struct MentionOption: Identifiable {
             return (starts + inside).map(mark)
         }
 
+        // "@folder:" and after: every folder in Media (and the folders inside them), narrowed by name.
+        let folders = MagicMention.folderLabels(p)
+        func folder(_ f: MagicMention.FolderLabel) -> MentionOption {
+            let n = f.files.count
+            return MentionOption(id: f.path, name: "folder:" + f.name,
+                                 detail: (f.label == f.name ? "" : f.label + "  ·  ") + "\(n) file\(n == 1 ? "" : "s")")
+        }
+        if q.hasPrefix("folder:") {
+            let rest = String(q.dropFirst("folder:".count))
+            let starts = folders.filter { $0.name.lowercased().hasPrefix(rest) }
+            let inside = rest.isEmpty ? [] : folders.filter { !$0.name.lowercased().hasPrefix(rest) && $0.label.lowercased().contains(rest) }
+            return (starts + inside).map(folder)
+        }
+
         // "@media:" and after: every file, narrowed by name, or by kind ("@media:audio").
         if q.hasPrefix("media:") {
             let rest = String(q.dropFirst("media:".count))
@@ -826,6 +840,9 @@ private struct MentionOption: Identifiable {
         if !p.assets.isEmpty {
             let n = p.assets.count
             pointers.append(MentionOption(id: "media", name: "media:", detail: "\(n) file\(n == 1 ? "" : "s")  ›", opensList: true))
+        }
+        if !folders.isEmpty {
+            pointers.append(MentionOption(id: "folder", name: "folder:", detail: "\(folders.count) folder\(folders.count == 1 ? "" : "s")  ›", opensList: true))
         }
         let onTimeline = MagicMention.clipLabels(p).count
         if onTimeline > 0 {
@@ -1054,10 +1071,16 @@ enum LocalMagic {
         // request in plain words for Apple's model ("@selected" reads "the selected clips").
         let pointers = MagicPointers.now(model)
         let media = model.project.assets
-        let pointed = Set(MagicMention.find(in: typed, media: media).compactMap { m -> UUID? in
-            if case .media(let id) = m.mention { return id } else { return nil }
+        let folders = MagicMention.folderLabels(model.project)
+        // Files named with @, and every file in a folder named with @folder:.
+        let pointed = Set(MagicMention.find(in: typed, media: media, folders: folders).flatMap { m -> [UUID] in
+            switch m.mention {
+            case .media(let id): [id]
+            case .folder(let path): folders.first { $0.path == path }?.files ?? []
+            default: []
+            }
         })
-        let request = MagicMention.plain(typed, media: media, clips: MagicMention.clipLabels(model.project))
+        let request = MagicMention.plain(typed, media: media, clips: MagicMention.clipLabels(model.project), folders: folders)
         // No request: Local's own improvement, with the same note at the end (Undo, Done).
         guard !request.isEmpty else {
             let started = Date()
