@@ -15,12 +15,12 @@ final class MagicAgent: ObservableObject {
         var name: String { self == .claude ? "Claude" : "ChatGPT" }
     }
 
-    /// The Magic popover's tabs: an AI, or the built-in cut on this Mac.
+    /// The Magic popover's tabs: an AI Magic runs, the built-in cut on this Mac, or another AI app.
     enum Tab: String, CaseIterable, Identifiable {
-        case claude, chatgpt, local
+        case claude, chatgpt, local, other
         var id: String { rawValue }
         var kind: Kind? { self == .claude ? .claude : self == .chatgpt ? .chatgpt : nil }
-        var name: String { kind?.name ?? "Local" }
+        var name: String { kind?.name ?? (self == .other ? "Other AI" : "Local") }
     }
 
     /// What an AI said when it finished, shown under the Magic button.

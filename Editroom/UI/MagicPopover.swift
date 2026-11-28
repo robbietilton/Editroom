@@ -2,8 +2,8 @@ import AppKit
 import SwiftUI
 
 /// The Magic button's popover. A switch (like the timeline's select and cut tools) picks Claude,
-/// ChatGPT or Local. An AI that's ready shows the prompt; one that isn't walks through connecting it
-/// right here. Disconnecting lives in AI Agents.
+/// ChatGPT, Local or another AI app. An AI that's ready shows the prompt; one that isn't walks through
+/// connecting it right here. Another app connects with a prompt. Disconnecting lives in AI Agents.
 struct MagicPopover: View {
     @ObservedObject var model: EditorModel
     @ObservedObject var ai: MagicAgent
@@ -44,7 +44,10 @@ struct MagicPopover: View {
     // MARK: What the tab shows
 
     @ViewBuilder private var content: some View {
-        if let kind = ai.tab.kind {
+        if ai.tab == .other {
+            // Not a Magic agent: an AI app Magic can't run connects through the prompt and edits here itself.
+            OwnAgentRow(enabled: server.enabled)
+        } else if let kind = ai.tab.kind {
             if justConnected == kind {
                 Centered(logo: AppLogo(kind: kind, size: 36), title: "\(kind.name) is connected",
                          text: kind == .claude ? "Tell it what to make. You can disconnect any time in AI Agents."
@@ -219,6 +222,10 @@ private struct AITab: View {
             HStack(spacing: 6) {
                 if let kind = tab.kind {
                     AppLogo(kind: kind, size: 15).opacity(on ? 1 : 0.8)
+                } else if tab == .other {
+                    // Another AI app: the app mark with a plus, not a maker's logo.
+                    Image(systemName: "plus.app").font(.system(size: 12.5, weight: .semibold))
+                        .frame(width: 15, height: 15)
                 } else {
                     // Local runs on Apple Intelligence: Apple's mark, as the other tabs show their maker's.
                     Image(systemName: "apple.logo").font(.system(size: 12.5, weight: .semibold))

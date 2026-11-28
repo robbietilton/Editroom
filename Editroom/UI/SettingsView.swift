@@ -674,7 +674,7 @@ private struct MagicSettings: View {
 }
 
 /// For AI apps without a Connect button: one prompt to paste into them, which they follow to connect and start.
-private struct OwnAgentRow: View {
+struct OwnAgentRow: View {
     let enabled: Bool
     @State private var copied = false
 
