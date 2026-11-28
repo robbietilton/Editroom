@@ -102,7 +102,7 @@ struct InspectorView: View {
             if picked.count == 1, let b = picked.first {
                 InspectorSection("Caption") {
                     CaptionTextField(model: model, block: b)
-                    Text("Fixed here, a word stays fixed wherever this clip is used. Delete leaves the caption's words out.")
+                    Text("Corrections apply wherever this clip is used. Delete removes these words from the captions.")
                         .font(.system(size: 10.5))
                         .foregroundStyle(Theme.textFaint)
                         .fixedSize(horizontal: false, vertical: true)
