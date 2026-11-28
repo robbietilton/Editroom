@@ -257,8 +257,8 @@ struct EditroomApp: App {
                         .disabled(model.recentProjects.isEmpty)
                 }
                 Divider()
+                // Always on: with Settings in front it closes Settings.
                 Button("Close Tab") { workspace.closeActive() }.keyboardShortcut(keys.menu(.closeTab))
-                    .disabled(!workspace.canClose)
                 Button("Save") { model.save() }.keyboardShortcut(keys.menu(.save))
                 Button("Save As…") { model.saveAs() }.keyboardShortcut(keys.menu(.saveAs))
                 Divider()

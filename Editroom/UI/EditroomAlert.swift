@@ -25,6 +25,10 @@ final class EditroomAlert: NSAlert {
         }
         prepare(action: #selector(stopModal(_:)))
         center(over: parent)
+        // Clicks on the window behind it land on a clear cover that takes them quietly, as behind a sheet,
+        // rather than being turned away with macOS's beep. Keys still beep; Return and esc answer it as usual.
+        let cover = ClickCover(over: parent)
+        defer { cover.remove() }
         // On screen already where it goes, so running it modally has nothing to move (left off screen, it's first
         // put where macOS puts alerts, and shows there for a frame).
         window.makeKeyAndOrderFront(nil)
@@ -75,5 +79,32 @@ final class EditroomAlert: NSAlert {
             .font: main.font ?? NSFont.systemFont(ofSize: NSFont.systemFontSize),
         ])
         main.needsDisplay = true
+    }
+}
+
+/// A clear window over Editroom's while an alert is up: clicks on it do nothing, without a beep. A window that
+/// works while an alert is up is let have its clicks; any other is beeped at.
+private final class ClickCover: NSPanel {
+    private weak var below: NSWindow?
+
+    init(over parent: NSWindow) {
+        below = parent
+        super.init(contentRect: parent.frame, styleMask: [.borderless, .nonactivatingPanel], backing: .buffered, defer: false)
+        worksWhenModal = true
+        isReleasedWhenClosed = false
+        hasShadow = false
+        isOpaque = false
+        // Not quite clear: a fully clear window lets clicks through to what's under it.
+        backgroundColor = NSColor.black.withAlphaComponent(0.002)
+        ignoresMouseEvents = false
+        parent.addChildWindow(self, ordered: .above)
+    }
+
+    override var canBecomeKey: Bool { false }
+    override var canBecomeMain: Bool { false }
+
+    func remove() {
+        below?.removeChildWindow(self)
+        orderOut(nil)
     }
 }

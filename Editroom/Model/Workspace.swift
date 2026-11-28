@@ -131,7 +131,15 @@ final class Workspace: ObservableObject {
         remember()
     }
 
-    func closeActive() { close(active) }
+    /// ⌘W: closes the window in front (Settings, About), or with the editor in front, its tab.
+    func closeActive() {
+        if let window = NSApp.keyWindow, window.identifier?.rawValue.hasPrefix("main") != true {
+            // A sheet on the editor (Export) isn't closed this way; anything else in front is.
+            if window.sheetParent == nil, window.styleMask.contains(.closable) { window.performClose(nil) }
+            return
+        }
+        close(active)
+    }
 
     /// Close Tab does something: there's another tab, or a project in this one.
     var canClose: Bool { tabs.count > 1 || !active.isBlank }
