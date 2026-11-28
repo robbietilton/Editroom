@@ -3,14 +3,16 @@
   <channel>
     <title>Editroom</title>
     <item>
-      <title>Version 1.1.1</title>
-      <pubDate>Fri, 27 Nov 2026 22:47:32 +0000</pubDate>
-      <sparkle:version>15</sparkle:version>
-      <sparkle:shortVersionString>1.1.1</sparkle:shortVersionString>
+      <title>Version 1.1.2</title>
+      <pubDate>Sat, 28 Nov 2026 00:03:55 +0000</pubDate>
+      <sparkle:version>16</sparkle:version>
+      <sparkle:shortVersionString>1.1.2</sparkle:shortVersionString>
       <sparkle:minimumSystemVersion>14.0</sparkle:minimumSystemVersion>
-      <link>https://github.com/robbietilton/Editroom/releases/tag/v1.1.1</link>
-      <changes><![CDATA[Tabs: ⌘W on the only tab now closes its project and leaves an empty Untitled tab.]]></changes>
-      <enclosure url="https://github.com/robbietilton/Editroom/releases/download/v1.1.1/Editroom.dmg" sparkle:edSignature="PxG7IheBzuD1y14/0HLOkDVdecx7qU68zWNQ71+cGFm1aIdzeHEoYM7KQJDvHmvolbURTFy/4Wl8lvMsGvS3Cg==" length="12453218" type="application/octet-stream"/>
+      <link>https://github.com/robbietilton/Editroom/releases/tag/v1.1.2</link>
+      <changes><![CDATA[Magic: type @folder: to point Magic, Claude or ChatGPT at a folder in Media. Add :only to leave out the folders inside it.
+Magic: picking from the @ list now closes it.
+Viewer: small display fix when Magic starts.]]></changes>
+      <enclosure url="https://github.com/robbietilton/Editroom/releases/download/v1.1.2/Editroom.dmg" sparkle:edSignature="uhOx2XzF2HXB2rxHZ/CrDjIY04q5OmHS2Mj3bu589WpRl7HZTc/3uRlv73oH9NNaU7sQyTvded2wq44drdq7DQ==" length="12551183" type="application/octet-stream"/>
     </item>
   </channel>
 </rss>
