@@ -529,6 +529,9 @@ final class MagicAgent: ObservableObject {
             p.arguments = [
                 "-p", "--output-format", "stream-json", "--verbose", "--no-session-persistence",
                 "--mcp-config", config, "--strict-mcp-config",
+                // Its own mode, whatever the person's Claude Code settings start in ("plan" never edits, issue #20):
+                // the tools allowed below run, and anything else is turned down without asking.
+                "--permission-mode", "dontAsk",
                 // Editroom's tools, and web search and reading pages (to find music). None of Claude
                 // Code's others: no files, no shell.
                 "--tools", "WebSearch,WebFetch",
