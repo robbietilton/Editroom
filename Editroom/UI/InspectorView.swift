@@ -2253,6 +2253,8 @@ private struct CaptionTextField: View {
             .padding(.horizontal, 8)
             .padding(.vertical, 7)
             .background(RoundedRectangle(cornerRadius: 8, style: .continuous).fill(Theme.field))
+            // Outlined while typing in it, like the other fields.
+            .overlay(RoundedRectangle(cornerRadius: 8, style: .continuous).strokeBorder(Theme.text.opacity(focused ? 0.85 : 0)))
             .onAppear { text = block.text; takeRequest() }
             .onChange(of: block) { _, b in if !focused { text = b.text } }
             .onChange(of: model.captionEditRequest) { _, _ in takeRequest() }
