@@ -594,7 +594,7 @@ private struct MagicSettings: View {
 
     /// Claude Code only when it's on this Mac.
     private var apps: [AgentApp] {
-        [.claude, .chatgpt, .claudeCode].filter { $0 != .claudeCode || connect.states[$0] != .missing }
+        [.chatgpt, .claude, .claudeCode].filter { $0 != .claudeCode || connect.states[$0] != .missing }
     }
 
     var body: some View {
