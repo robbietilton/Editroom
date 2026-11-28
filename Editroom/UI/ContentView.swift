@@ -267,6 +267,7 @@ struct MagicButton: View {
     @ObservedObject var state = MagicState.shared
     @ObservedObject var ai = MagicAgent.shared
     @ObservedObject var connections = AgentConnect.shared
+    @ObservedObject var server = MCPServer.shared
     @State private var hovering = false
 
     private var hasMedia: Bool { model.project.assets.contains { $0.kind != .audio } || !model.project.clips.isEmpty }
@@ -329,6 +330,8 @@ struct MagicButton: View {
                 .transition(.opacity)
                 .animation(.easeOut(duration: 0.2), value: status)
                 .allowsHitTesting(false)
+            // The AI apps editing here right now, as Settings › Magic shows them.
+            WorkingNow(server: server)
             button.fixedSize().layoutPriority(1)
         }
         .fixedSize()
@@ -400,6 +403,32 @@ struct MagicButton: View {
             // The whole popover, arrow included, in the panel colour: otherwise its lighter system
             // background flickers through at the top while it resizes.
             .presentationBackground(Theme.panel)
+        }
+    }
+}
+
+/// The AI apps that have done something in the last minute, in the Settings' words and colours.
+private struct WorkingNow: View {
+    @ObservedObject var server: MCPServer
+
+    var body: some View {
+        TimelineView(.periodic(from: .now, by: 5)) { context in
+            let active = server.clients.values
+                .filter { context.date.timeIntervalSince($0.lastSeen) < 60 }
+                .sorted { $0.lastSeen > $1.lastSeen }
+            if !active.isEmpty {
+                HStack(spacing: 10) {
+                    Text("Working now:").font(.system(size: 11.5)).foregroundStyle(Theme.textDim)
+                    ForEach(active) { c in
+                        HStack(spacing: 5) {
+                            Circle().fill(Color(nsColor: MCPTools.color(for: c.name))).frame(width: 7, height: 7)
+                            Text(c.name).font(.system(size: 11.5, weight: .medium)).foregroundStyle(Theme.text)
+                        }
+                    }
+                }
+                .fixedSize()
+                .allowsHitTesting(false)
+            }
         }
     }
 }

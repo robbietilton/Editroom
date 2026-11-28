@@ -46,7 +46,10 @@ struct MagicPopover: View {
     @ViewBuilder private var content: some View {
         if ai.tab == .other {
             // Not a Magic agent: an AI app Magic can't run connects through the prompt and edits here itself.
-            OwnAgentRow(enabled: server.enabled)
+            VStack(alignment: .leading, spacing: 10) {
+                OwnAgentRow(enabled: server.enabled)
+                ConnectedApps(server: server, connect: connections)
+            }
         } else if let kind = ai.tab.kind {
             if justConnected == kind {
                 Centered(logo: AppLogo(kind: kind, size: 36), title: "\(kind.name) is connected",
@@ -195,6 +198,56 @@ struct MagicPopover: View {
 }
 
 // MARK: Pieces
+
+/// The AI apps connected to Editroom, in Settings › Magic's words: which are working now, and which are
+/// connected (native apps, or the other apps that have a session open).
+private struct ConnectedApps: View {
+    @ObservedObject var server: MCPServer
+    @ObservedObject var connect: AgentConnect
+
+    var body: some View {
+        TimelineView(.periodic(from: .now, by: 5)) { context in
+            let clients = server.clients.values.sorted { $0.lastSeen > $1.lastSeen }
+            let working = clients.filter { context.date.timeIntervalSince($0.lastSeen) < 60 }
+            let idle = clients.filter { context.date.timeIntervalSince($0.lastSeen) >= 60 }
+            let seen = Set(clients.map { $0.name.lowercased() })
+            let native = [AgentApp.claude, .chatgpt, .claudeCode].filter {
+                connect.states[$0] == .connected
+                    && !seen.contains($0.title.lowercased())
+                    && !seen.contains($0.cursorName.lowercased())
+            }
+            let connected = idle.map { AgentTag(id: $0.id, name: $0.name, color: MCPTools.color(for: $0.name)) }
+                + native.map { AgentTag(id: $0.rawValue, name: $0.title, color: MCPTools.color(for: $0.cursorName)) }
+            VStack(alignment: .leading, spacing: 6) {
+                if !working.isEmpty {
+                    line("Working now:", working.map { AgentTag(id: $0.id, name: $0.name, color: MCPTools.color(for: $0.name)) })
+                }
+                if !connected.isEmpty {
+                    line("Connected:", connected)
+                }
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
+        }
+    }
+
+    private func line(_ label: String, _ tags: [AgentTag]) -> some View {
+        HStack(spacing: 10) {
+            Text(label).font(.system(size: 11.5)).foregroundStyle(Theme.textDim)
+            ForEach(tags) { tag in
+                HStack(spacing: 5) {
+                    Circle().fill(Color(nsColor: tag.color)).frame(width: 7, height: 7)
+                    Text(tag.name).font(.system(size: 11.5, weight: .medium)).foregroundStyle(Theme.text)
+                }
+            }
+        }
+    }
+}
+
+private struct AgentTag: Identifiable {
+    let id: String
+    let name: String
+    let color: NSColor
+}
 
 /// Claude, ChatGPT or Local, in the style of the timeline's select and cut switch.
 private struct AITabs: View {
